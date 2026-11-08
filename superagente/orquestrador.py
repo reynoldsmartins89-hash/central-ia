@@ -14,6 +14,7 @@ import unicodedata
 from datetime import datetime
 from pathlib import Path
 
+from . import telegram
 from .agentes import RAIZ, Agente, carregar_equipe
 
 PASTA_FLUXOS = RAIZ / "fluxos"
@@ -101,6 +102,12 @@ class Superagente:
             "Revise os arquivos desta pasta. Nada é publicado automaticamente.\n"
             "Troque o status para APROVADO quando estiver de acordo.\n", encoding="utf-8")
         self.log(f"\n✅ Pronto. Resultados em: {pasta}")
+        ultima = registro["etapas"][-1]
+        resumo = (pasta / ultima["arquivo"]).read_text(encoding="utf-8")[:1500]
+        telegram.enviar(
+            f"✅ Central de IA concluiu: {titulo}\n"
+            f"{len(plano)} etapas · pasta: {pasta.name}\n\n"
+            f"— Prévia ({ultima['agente']}) —\n{resumo}")
         return pasta
 
     def executar(self, objetivo: str) -> Path:

@@ -1,9 +1,10 @@
 """Central de IA — linha de comando do superagente.
 
-Exemplos (no terminal do VS Code):
+Jeito mais fácil: dê dois cliques em INICIAR.bat (abre um menu).
+
+Exemplos para o terminal:
+    python main.py                  (menu)
     python main.py diagnostico
-    python main.py agentes
-    python main.py perguntar pesquisador "Tendências de IA para pequenas empresas"
     python main.py executar "Crie um plano para lançar uma newsletter sobre IA aplicada"
     python main.py fluxo producao-editorial "IA nas pequenas empresas"
 Use --modelo eco:teste para testar tudo offline, sem chamar nenhuma IA.
@@ -11,11 +12,12 @@ Use --modelo eco:teste para testar tudo offline, sem chamar nenhuma IA.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
-from superagente import habilidades, provedores
-from superagente.agentes import carregar_env, carregar_equipe
-from superagente.orquestrador import PASTA_FLUXOS, Superagente
+from superagente import habilidades, provedores, telegram
+from superagente.agentes import RAIZ, carregar_env, carregar_equipe
+from superagente.orquestrador import PASTA_FLUXOS, PASTA_RESULTADOS, Superagente
 
 for fluxo_saida in (sys.stdout, sys.stderr):
     try:
@@ -23,14 +25,86 @@ for fluxo_saida in (sys.stdout, sys.stderr):
     except AttributeError:
         pass
 
+ARQUIVO_ENV = RAIZ / ".env"
 
-def confirmar_plano(_plano) -> bool:
+
+def texto_plano(plano) -> str:
+    return "📋 Plano do superagente:\n" + "\n".join(
+        f"{i}. [{p['agente']}] {p['tarefa']}" for i, p in enumerate(plano, 1))
+
+
+def confirmar_plano(plano) -> bool:
+    if telegram.configurado():
+        return telegram.pedir_aprovacao(texto_plano(plano))
     resposta = input("\nExecutar este plano? [S/n] ").strip().lower()
     return resposta in ("", "s", "sim", "y")
 
 
+def salvar_no_env(chave: str, valor: str) -> None:
+    """Grava/atualiza CHAVE=valor no .env."""
+    linhas = ARQUIVO_ENV.read_text(encoding="utf-8").splitlines() if ARQUIVO_ENV.exists() else []
+    linhas = [l for l in linhas if not l.startswith(f"{chave}=")] + [f"{chave}={valor}"]
+    ARQUIVO_ENV.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+    os.environ[chave] = valor
+
+
+def configurar_telegram() -> int:
+    if not os.getenv("TELEGRAM_BOT_TOKEN", "").strip():
+        print("Falta o TELEGRAM_BOT_TOKEN no arquivo .env (veja o README, seção Telegram).")
+        return 1
+    print("Abra o Telegram, procure o seu bot e envie a ele qualquer mensagem (ex.: oi).")
+    input("Depois de enviar, aperte ENTER aqui… ")
+    chat_id = telegram.descobrir_chat_id()
+    if not chat_id:
+        print("Não encontrei nenhuma mensagem. Envie 'oi' ao bot e tente de novo.")
+        return 1
+    salvar_no_env("TELEGRAM_CHAT_ID", chat_id)
+    telegram.enviar("🤖 Central de IA conectada! Você receberá aqui os planos para aprovar.")
+    print("✅ Telegram configurado. Confira a mensagem no seu celular.")
+    return 0
+
+
+def menu() -> list[str]:
+    """Menu simples para quem não quer digitar comandos."""
+    print("\n=== 🧠 CENTRAL DE IA ===")
+    print("1) Pedir algo ao superagente (ele escolhe os agentes)")
+    print("2) Produzir conteúdo completo a partir de um tema")
+    print("3) Conversar com um agente específico")
+    print("4) Ver o que está funcionando (diagnóstico)")
+    print("5) Abrir a pasta de resultados")
+    print("6) Conectar o Telegram")
+    print("0) Sair")
+    opcao = input("\nEscolha: ").strip()
+    if opcao == "1":
+        return ["executar", input("O que você quer? ").strip()]
+    if opcao == "2":
+        return ["fluxo", "producao-editorial", input("Tema: ").strip()]
+    if opcao == "3":
+        _, equipe = carregar_equipe()
+        nomes = list(equipe)
+        for i, n in enumerate(nomes, 1):
+            print(f"  {i}) {n} — {equipe[n].descricao}")
+        escolhido = nomes[int(input("Número do agente: ")) - 1]
+        return ["perguntar", escolhido, input("Sua pergunta: ").strip()]
+    if opcao == "4":
+        return ["diagnostico"]
+    if opcao == "5":
+        PASTA_RESULTADOS.mkdir(exist_ok=True)
+        os.startfile(PASTA_RESULTADOS)  # type: ignore[attr-defined]
+        return ["sair"]
+    if opcao == "6":
+        return ["telegram"]
+    return ["sair"]
+
+
 def main(argv: list[str] | None = None) -> int:
     carregar_env()
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        argv = menu()
+        if argv == ["sair"]:
+            return 0
+
     p = argparse.ArgumentParser(prog="central-ia", description="Superagente e equipe de agentes de IA")
     p.add_argument("--modelo", help='força um modelo para todos, ex.: "eco:teste" ou "ollama:qwen3:4b"')
     p.add_argument("-s", "--sim", action="store_true", help="não pede confirmação do plano")
@@ -40,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("agentes", help="lista a equipe de agentes")
     sub.add_parser("habilidades", help="lista as habilidades (SKILL.md)")
     sub.add_parser("fluxos", help="lista os fluxos fixos")
+    sub.add_parser("telegram", help="conecta o seu Telegram (descobre o chat id)")
 
     c = sub.add_parser("perguntar", help="fala direto com um agente")
     c.add_argument("agente")
@@ -57,7 +132,12 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "diagnostico":
         for nome, ok, detalhe in provedores.diagnostico():
             print(f"{'✅' if ok else '⬜'} {nome:<11} {detalhe}")
+        print(f"{'✅' if telegram.configurado() else '⬜'} {'telegram':<11} "
+              f"{'conectado' if telegram.configurado() else 'não configurado'}")
         return 0
+
+    if a.comando == "telegram":
+        return configurar_telegram()
 
     if a.comando == "agentes":
         mestre, equipe = carregar_equipe()
@@ -98,5 +178,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except provedores.ErroProvedor as erro:
-        print(f"\n❌ {erro}\nDica: rode 'python main.py diagnostico' e configure o arquivo .env")
+        print(f"\n❌ {erro}\nDica: escolha 'diagnóstico' no menu e confira o arquivo .env")
         sys.exit(1)

@@ -12,6 +12,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
+sys.stdout.reconfigure(encoding="utf-8")
 
 from superagente.habilidades import PASTA_HABILIDADES, ler_frontmatter  # noqa: E402
 

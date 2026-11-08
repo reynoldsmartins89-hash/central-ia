@@ -51,6 +51,18 @@ central-ia/
 └── tests/                     # testes offline
 ```
 
+## Jeito fácil (sem programar)
+
+1. Dê **dois cliques em `INICIAR.bat`** — abre um menu com números.
+2. Escolha **1** para pedir qualquer coisa ao superagente, ou **2** para produzir conteúdo a partir de um tema.
+3. O plano chega no seu **Telegram** com botões ✅ Aprovar / ❌ Rejeitar; ao terminar, chega o aviso.
+4. Os textos prontos ficam na pasta `resultados/` (opção **5** do menu abre a pasta).
+
+### Conectar o Telegram (uma vez só)
+1. No Telegram, procure **@BotFather**, envie `/newbot`, escolha um nome e copie o *token*.
+2. Abra o arquivo `.env` (Bloco de Notas) e cole o token depois de `TELEGRAM_BOT_TOKEN=`.
+3. Envie "oi" para o seu bot e, no menu, escolha **6) Conectar o Telegram**.
+
 ## Começando (Windows, terminal do VS Code)
 
 ```powershell
