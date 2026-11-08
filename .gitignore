@@ -1,0 +1,16 @@
+# Segredos
+.env
+
+# Resultados gerados (podem conter material privado)
+resultados/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editores / sistema
+.vscode/settings.json
+.DS_Store
+Thumbs.db

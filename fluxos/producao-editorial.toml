@@ -1,0 +1,25 @@
+# Fluxo fixo: do tema ao pacote de conteúdo multicanal.
+# Uso: python main.py fluxo producao-editorial "Seu tema aqui"
+# Cada etapa recebe a entrada original + os resultados das etapas anteriores.
+
+descricao = "Tema → dossiê → artigo-mãe → revisão → derivados para redes → roteiro de YouTube"
+
+[[etapas]]
+agente = "pesquisador"
+tarefa = "Monte o dossiê de pesquisa sobre o tema."
+
+[[etapas]]
+agente = "redator"
+tarefa = "Escreva o artigo-mãe do blog usando somente o dossiê."
+
+[[etapas]]
+agente = "revisor"
+tarefa = "Revise criticamente o artigo-mãe e liste as correções."
+
+[[etapas]]
+agente = "social"
+tarefa = "Crie os derivados para as redes sociais a partir do artigo-mãe, aplicando as correções da revisão."
+
+[[etapas]]
+agente = "roteirista"
+tarefa = "Crie o roteiro de YouTube e Shorts a partir do artigo-mãe."
