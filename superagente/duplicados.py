@@ -103,6 +103,7 @@ def encontrar(raizes: list[str | Path] | None = None, tamanho_minimo: int = 1_00
                 for c in copias:
                     con.execute("INSERT OR REPLACE INTO duplicados VALUES (?, ?, ?, ?, 'detectado')",
                                 (c, hash_, tamanho, int(c == original)))
+                con.commit()   # libera o catálogo na hora (o hash de arquivos grandes demora)
                 total_grupos += 1
                 desperdicio += tamanho * (len(copias) - 1)
         if n % 500 == 0:

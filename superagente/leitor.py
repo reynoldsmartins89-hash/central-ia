@@ -315,6 +315,7 @@ def _ler_compactado(con, caminho: str, log=print) -> int:
                 fichas += ler_e_registrar(con, f"{caminho}::{relativo}", str(interno))
             except Exception as erro:  # noqa: BLE001
                 log(f"   ⚠ {relativo}: {str(erro)[:80]}")
+            con.commit()   # salva a cada arquivo de dentro do pacote (não segura o catálogo por horas)
         con.execute("INSERT OR REPLACE INTO leituras VALUES (?, 'compactado', '7-Zip', 'lido', NULL, ?, 0, ?, NULL)",
                     (caminho, fichas, datetime.now().isoformat(timespec="minutes")))
         log(f"   📦 {origem_base.name}: {fichas} fichas de dentro do compactado")
@@ -363,8 +364,8 @@ def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: i
                         (caminho, _tipo, time.time() - inicio, datetime.now().isoformat(timespec="minutes"),
                          f"{type(erro).__name__}: {str(erro)[:200]}"))
             contagem["erros"] += 1
+        con.commit()   # um arquivo por vez: nunca segura o catálogo enquanto transcreve
         if n % 25 == 0:
-            con.commit()
             log(f"   {n:,}/{len(fila):,} lidos ({contagem['erros']} com erro)")
     con.commit()
     con.close()
