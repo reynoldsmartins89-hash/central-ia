@@ -1,3 +1,6 @@
 # O núcleo (main.py + superagente/) usa só a biblioteca padrão do Python 3.11+.
 # Dependência opcional, apenas para o servidor MCP (mcp_servidor/servidor.py):
 mcp[cli]>=1.2
+
+# Leitura completa de Word, PowerPoint e Excel (com tabelas)
+markitdown[docx,pptx,xlsx,xls]
