@@ -149,6 +149,10 @@ def main(argv: list[str] | None = None) -> int:
     c_gr.add_argument("alvo", nargs="?", default="", help="arquivo exportado ou nome do grupo")
     c_gr.add_argument("--assunto", default="", help="foco do relatório (opcional)")
     c_gr.add_argument("--tudo", action="store_true", help="relatório do histórico inteiro, não só do que é novo")
+    c_cu = sub.add_parser("curadoria", help="monta a biblioteca de um agente LENDO o conteúdo dos materiais")
+    c_cu.add_argument("agente")
+    c_cu.add_argument("--relatorio", action="store_true", help="só mostra o que já foi decidido")
+    c_cu.add_argument("--reindexar", action="store_true", help="refaz a biblioteca com as decisões já tomadas")
     c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
     c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
@@ -206,6 +210,19 @@ def main(argv: list[str] | None = None) -> int:
                   f"{grupos.acompanhar(a.alvo, a.acao == 'acompanhar')}")
         else:
             grupos.semanal()
+        return 0
+    if a.comando == "curadoria":
+        from superagente import curadoria
+        if a.agente not in curadoria.TEMAS:
+            print(f"Sem tema de curadoria para '{a.agente}'. Temas: {', '.join(curadoria.TEMAS)}")
+            return 1
+        if a.relatorio:
+            print(curadoria.relatorio(a.agente))
+        elif a.reindexar:
+            curadoria.indexar(a.agente)
+        else:
+            curadoria.montar(a.agente)
+            print(curadoria.relatorio(a.agente))
         return 0
     if a.comando == "avisar":
         from superagente import telegram
@@ -396,6 +413,8 @@ def main(argv: list[str] | None = None) -> int:
             print("Nenhum agente de conhecimento com esse nome.")
             return 1
         for ag in alvos:
+            if ag.base.startswith("curadoria:"):   # biblioteca montada pelo conteúdo: ver "curadoria"
+                continue
             try:
                 conhecimento.indexar(ag.nome, ag.base)
             except FileNotFoundError as erro:

@@ -181,6 +181,14 @@ base = "G:/Meu Drive/Agente_Seguranca_Publica"
 privacidade = "local"
 modelos = ["ollama:qwen3:4b"]
 
+[agentes.mentor_educacao]
+descricao = "Mentor, consultor e psicopedagogo: estudo, aprendizagem e educação (de adultos e crianças) unindo trivium, quadrivium, escolástica, patrística e doutrina católica com a neurociência — fundamentado nos seus materiais de educação lidos pelo conteúdo (HDs e Drive)."
+habilidade = "conhecimento/mentor-educacao"
+base = "curadoria:mentor_educacao"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
 [agentes.viver_de_estudo]
 descricao = "Especialista do curso Viver de Estudo da sua biblioteca: empreender com conteúdo, Instagram, anúncios e formalização (MEI, nota fiscal)."
 habilidade = "conhecimento/viver-de-estudo"
