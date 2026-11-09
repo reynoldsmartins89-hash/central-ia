@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -206,9 +208,13 @@ def conferir(raiz: str | Path, apagar: bool = False, log=print) -> dict:
         except OSError as erro:
             resultado, detalhe, copia = "erro_leitura", f"não consegui ler: {erro}", mapa.get(caminho)
         if apagar and resultado == "identico":
-            Path(copia).unlink()
-            resultado, liberado = "apagado", liberado + tamanho
-            con.execute("UPDATE duplicados SET status = 'apagado' WHERE caminho = ?", (caminho,))
+            try:
+                os.chmod(copia, stat.S_IWRITE)   # cópias marcadas "somente leitura" (já conferidas byte a byte)
+                Path(copia).unlink()
+                resultado, liberado = "apagado", liberado + tamanho
+                con.execute("UPDATE duplicados SET status = 'apagado' WHERE caminho = ?", (caminho,))
+            except OSError as erro:   # nunca interrompe as demais: registra e segue
+                resultado, detalhe = "erro_apagar", f"conferida, mas não consegui apagar: {erro}"
         con.execute("INSERT OR REPLACE INTO conferencia VALUES (?, ?, ?, ?, ?)",
                     (caminho, copia, resultado, detalhe, datetime.now().isoformat(timespec="minutes")))
         con.commit()
@@ -218,7 +224,8 @@ def conferir(raiz: str | Path, apagar: bool = False, log=print) -> dict:
     con.close()
     nomes = {"identico": "✅ idênticas (seguras para apagar)", "apagado": "🗑 apagadas após conferência",
              "divergente": "⚠ diferentes — mantidas", "sem_original": "⚠ original sumiu — mantidas",
-             "copia_sumiu": "🔍 cópia não encontrada", "erro_leitura": "⚠ erro de leitura — mantidas"}
+             "copia_sumiu": "🔍 cópia não encontrada", "erro_leitura": "⚠ erro de leitura — mantidas",
+             "erro_apagar": "⚠ conferidas mas não apagadas"}
     log("Resultado: " + " · ".join(f"{nomes.get(k, k)}: {v:,}" for k, v in contagem.items())
         + (f" · {liberado / 1e9:.1f} GB liberados" if apagar else ""))
     return contagem
