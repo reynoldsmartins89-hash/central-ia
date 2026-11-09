@@ -432,11 +432,7 @@ class TestGrupos(unittest.TestCase):
         renomeado.write_text(self.ANDROID * 3, encoding="utf-8")
         self.assertTrue(self.g.parece_conversa(renomeado))
         comum = self.pasta / "anotacoes.txt"
-        comum.write_text("Lista de compras
-pão
-leite
-09/11/2026 reunião
-", encoding="utf-8")
+        comum.write_text("Lista de compras\npão\nleite\n09/11/2026 reunião\n", encoding="utf-8")
         self.assertFalse(self.g.parece_conversa(comum))
 
     def test_telegram_json_e_partes(self):
