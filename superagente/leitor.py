@@ -52,11 +52,20 @@ def _tabelas() -> sqlite3.Connection:
     return con
 
 
-def tipo_de(caminho: str) -> str | None:
+def tipo_de(caminho: str, raiz: str | None = None) -> str | None:
+    """Tipo de leitura pela extensão. Com `raiz`, também ignora arquivos dentro de pastas de
+    programa/sistema (verificando só o trecho do caminho DENTRO da raiz)."""
     p = Path(caminho)
     ext = p.suffix.lower()
-    if ext in SINAIS_DE_PROGRAMA or {x.lower() for x in p.parts[:-1]} & PASTAS_DE_PROGRAMA:
+    if ext in SINAIS_DE_PROGRAMA:
         return None
+    if raiz:
+        try:
+            partes = p.relative_to(raiz).parts[:-1]
+        except ValueError:
+            partes = ()
+        if {x.lower() for x in partes} & PASTAS_DE_PROGRAMA:
+            return None
     if ext in AUDIO_VIDEO:
         return "audio/video"
     if ext in IMAGEM:
@@ -205,9 +214,9 @@ def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: i
     if raiz:
         from .curador import _raiz
         filtro, args = "AND a.raiz = ?", [str(_raiz(raiz))]
-    linhas = con.execute(f"""SELECT a.caminho, a.tamanho FROM arquivos a LEFT JOIN leituras l
+    linhas = con.execute(f"""SELECT a.caminho, a.tamanho, a.raiz FROM arquivos a LEFT JOIN leituras l
                              ON l.caminho = a.caminho WHERE l.caminho IS NULL {filtro}""", args).fetchall()
-    fila = [(c, t, tipo_de(c)) for c, t in linhas]
+    fila = [(c, t, tipo_de(c, r)) for c, t, r in linhas]
     fila = [(c, t, tp) for c, t, tp in fila if tp and (not tipos or tp in tipos)]
     fila.sort(key=lambda x: (PRIORIDADE.get(x[2], 9), x[1]))
     if limite:
@@ -247,8 +256,8 @@ def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: i
 def progresso() -> str:
     con = _tabelas()
     total = {}
-    for (c,) in con.execute("SELECT caminho FROM arquivos"):
-        tp = tipo_de(c)
+    for c, r in con.execute("SELECT caminho, raiz FROM arquivos"):
+        tp = tipo_de(c, r)
         if tp:
             total[tp] = total.get(tp, 0) + 1
     lidos = dict(con.execute("SELECT tipo, count(*) FROM leituras WHERE status = 'lido' GROUP BY tipo").fetchall())
