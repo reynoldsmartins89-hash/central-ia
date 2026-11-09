@@ -34,12 +34,25 @@ def _rclone() -> str:
     raise FileNotFoundError("rclone não encontrado (instale: winget install Rclone.Rclone)")
 
 
+class ConfigIndisponivel(RuntimeError):
+    """O rclone não achou a conexão no arquivo de configuração (não é erro do Google)."""
+
+
 def _rodar(*args: str, timeout: float | None = None) -> str:
-    r = subprocess.run([_rclone(), *args], capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=timeout)
-    if r.returncode != 0:
-        raise RuntimeError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout) else "erro")
-    return r.stdout
+    # Quando o rclone renova a autorização, ele REGRAVA o rclone.conf; outro rclone que leia o
+    # arquivo nesse instante não acha a conexão. Isso é passageiro: espera e tenta de novo.
+    for tentativa in range(6):
+        r = subprocess.run([_rclone(), *args], capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
+        if r.returncode == 0:
+            return r.stdout
+        saida = (r.stderr or r.stdout).strip()
+        if "didn't find section in config file" not in saida:
+            break
+        time.sleep(2 + 3 * tentativa)
+    else:
+        raise ConfigIndisponivel(saida.splitlines()[-1])
+    raise RuntimeError(saida.splitlines()[-1] if saida else "erro")
 
 
 def configurado() -> bool:

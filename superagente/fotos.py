@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from .curador import _conectar, _raiz
+from . import drive
 from .drive import _rclone, _rodar
 
 REMOTO = os.getenv("FOTOS_REMOTO", "gfotos")
@@ -62,6 +63,10 @@ def enviar(pasta: str | Path, album: str = ALBUM_PADRAO, log=print) -> int:
     try:
         _rodar("copy", str(raiz), f"{REMOTO}:album/{album}", "--files-from", lista.name,
                "--transfers", "4", "--retries", "5", "--low-level-retries", "20", timeout=None)
+    except drive.ConfigIndisponivel:
+        raise
+    except RuntimeError as erro:   # o Google recusou alguma foto: as demais já foram enviadas
+        log(f"⚠ O Google recusou parte das fotos ({str(erro)[-120:]}). Rode de novo para tentar só as que faltam.")
     finally:
         os.unlink(lista.name)
     log(f"✅ Envio concluído. Abra photos.google.com → Álbuns → '{album}'.")
@@ -92,6 +97,8 @@ def enviar_recuperadas(album: str = "Fotos recuperadas (Central IA)", tamanho: s
             _rodar("copy", str(pasta), f"{REMOTO}:album/{album}", "--files-from", lista.name,
                    "--transfers", "4", "--retries", "5", "--low-level-retries", "20", timeout=None)
             log(f"   pasta {n}/{len(por_pasta)} enviada ({len(nomes)} fotos)")
+        except drive.ConfigIndisponivel:
+            raise
         except RuntimeError as erro:   # o Google recusou alguma foto: segue com as outras
             log(f"   ⚠ pasta {n}/{len(por_pasta)}: o Google recusou parte das fotos ({str(erro)[-120:]})")
         finally:
