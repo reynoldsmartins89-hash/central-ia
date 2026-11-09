@@ -176,7 +176,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "drive":
         from superagente import drive
         if a.acao == "conectar":
-            print(drive.conectar())
+            if not drive.configurado():
+                print("Vai abrir o navegador: entre na sua conta Google e clique em PERMITIR (somente leitura).")
+                import subprocess
+                subprocess.run(drive.comando_conexao())
+            print(drive.status())
         elif a.acao == "catalogar":
             drive.catalogar()
         elif a.acao == "duplicados":
