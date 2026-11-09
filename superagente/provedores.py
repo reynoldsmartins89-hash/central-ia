@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import time
 import urllib.error
+from pathlib import Path
 import urllib.request
 
 
@@ -114,6 +117,60 @@ def _openai_compativel(provedor: str, modelo: str, sistema: str, mensagem: str) 
     return r["choices"][0]["message"]["content"]
 
 
+PASTA_CLI = Path(__file__).resolve().parent.parent / "resultados" / "_cli"
+TIMEOUT_CLI = float(os.getenv("CENTRAL_IA_TIMEOUT_CLI", "600"))
+
+
+def _achar_cli(nome: str) -> str | None:
+    """Procura em ~/.central-ia/ferramentas (instalação própria), no PATH e na pasta global do npm.
+    A pasta própria existe porque o Python do "Python install manager" pode não enxergar AppData."""
+    pastas = [Path.home() / ".central-ia" / "ferramentas", Path(os.getenv("APPDATA", "")) / "npm"]
+    return next((c for p in pastas if (c := shutil.which(nome, path=str(p)))), None) or shutil.which(nome)
+
+
+def _cli(ferramenta: str, sistema: str, mensagem: str) -> str:
+    """Usa as ferramentas OFICIAIS de terminal, logadas com as SUAS assinaturas:
+        cli:claude  → Claude Code (plano Claude Pro/Max)
+        cli:codex   → Codex CLI   (ChatGPT Plus)
+        cli:gemini  → Gemini CLI  (conta Google)
+    Opcional: modelo após "/", ex.: "cli:claude/opus", "cli:gemini/gemini-3.5-pro".
+    O texto vai pela entrada padrão (sem limite de tamanho da linha de comando).
+    """
+    nome, _, modelo = ferramenta.partition("/")
+    executavel = _achar_cli(nome)
+    if not executavel:
+        raise ErroProvedor(f"{nome} não está instalado")
+    PASTA_CLI.mkdir(parents=True, exist_ok=True)
+    prompt = f"{sistema}\n\n---\n\n{mensagem}\n\nResponda apenas com o conteúdo pedido, sem usar ferramentas nem criar arquivos."
+    saida_codex = PASTA_CLI / "codex_resposta.txt"
+    if nome == "claude":
+        comando = [executavel, "-p", "--output-format", "text"] + (["--model", modelo] if modelo else [])
+    elif nome == "codex":
+        saida_codex.unlink(missing_ok=True)
+        comando = [executavel, "exec", "--skip-git-repo-check", "--sandbox", "read-only",
+                   "--output-last-message", str(saida_codex)] + (["-m", modelo] if modelo else []) + ["-"]
+    elif nome == "gemini":
+        comando = [executavel, "--skip-trust"] + (["-m", modelo] if modelo else [])
+    else:
+        raise ErroProvedor(f"ferramenta de terminal desconhecida: {nome}")
+    processo = subprocess.Popen(comando, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                                errors="replace", cwd=PASTA_CLI)
+    try:
+        saida, erros = processo.communicate(prompt, timeout=TIMEOUT_CLI)
+    except subprocess.TimeoutExpired as erro:
+        # .cmd abre um node por baixo: é preciso encerrar a árvore inteira de processos
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(processo.pid)], capture_output=True)
+        processo.communicate()
+        raise ErroProvedor(f"{nome} não respondeu em {TIMEOUT_CLI:.0f}s (precisa de login?)") from erro
+    r = subprocess.CompletedProcess(comando, processo.returncode, saida, erros)
+    texto = saida_codex.read_text(encoding="utf-8") if nome == "codex" and saida_codex.exists() else r.stdout
+    if r.returncode != 0 or not texto.strip():
+        detalhe = (r.stderr or r.stdout or "").strip().splitlines()[-3:]
+        raise ErroProvedor(f"{nome} falhou (está logado?): {' | '.join(detalhe)[:250]}")
+    return texto.strip()
+
+
 def _eco(modelo: str, sistema: str, mensagem: str) -> str:
     """Provedor falso para testes offline: devolve um texto previsível."""
     habilidade = sistema.splitlines()[0] if sistema else ""
@@ -135,6 +192,8 @@ def chamar(especificacao: str, sistema: str, mensagem: str) -> str:
         return _openai_compativel(provedor, modelo, sistema, mensagem)
     if provedor == "eco":
         return _eco(modelo, sistema, mensagem)
+    if provedor == "cli":
+        return _cli(modelo, sistema, mensagem)
     raise ErroProvedor(f"provedor desconhecido: {provedor}")
 
 
@@ -164,6 +223,9 @@ def diagnostico() -> list[tuple[str, bool, str]]:
         resultado.append(("ollama", True, "modelos: " + (", ".join(modelos) or "nenhum baixado")))
     except Exception:
         resultado.append(("ollama", False, "não está rodando (instale em ollama.com)"))
+    for ferramenta in ("claude", "codex", "gemini"):
+        ok = bool(_achar_cli(ferramenta))
+        resultado.append((f"cli:{ferramenta}", ok, "instalado (assinatura)" if ok else "não instalado"))
     for provedor, nome_env in CHAVES.items():
         ok = bool(os.getenv(nome_env, "").strip())
         resultado.append((provedor, ok, f"{nome_env} {'configurada' if ok else 'ausente'}"))

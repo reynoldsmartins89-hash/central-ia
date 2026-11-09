@@ -33,9 +33,16 @@ class TestCentral(unittest.TestCase):
         pasta = sa.fluxo("producao-editorial", "teste automatizado")
         try:
             self.assertTrue((pasta / "registro.json").exists())
-            self.assertTrue((pasta / "05-roteirista.md").exists())
+            self.assertTrue((pasta / "06-roteirista.md").exists())
+            self.assertTrue((pasta / "RESULTADO-COMPLETO.md").exists())
         finally:
             shutil.rmtree(pasta)
+
+    def test_lista_de_imagens_do_diretor_de_arte(self):
+        from superagente.imagens import extrair_lista
+        texto = 'Conceito...\n```json\n[{"canal": "blog", "nome": "blog-capa", "prompt_en": "x"}]\n```'
+        self.assertEqual(extrair_lista(texto)[0]["nome"], "blog-capa")
+        self.assertEqual(extrair_lista("sem json"), [])
 
     def test_superagente_sem_plano_valido_usa_generalista(self):
         sa = Superagente(forcar_modelo="eco:teste", log=lambda *_: None)

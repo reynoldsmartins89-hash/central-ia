@@ -43,6 +43,31 @@ def enviar(texto: str, botoes: list[tuple[str, str]] | None = None) -> None:
         print(f"   (aviso: não consegui enviar ao Telegram: {erro})")
 
 
+def enviar_arquivo(caminho, legenda: str = "") -> None:
+    """Envia um arquivo (ex.: o resultado .md ou uma imagem) como documento."""
+    if not configurado():
+        return
+    import uuid
+    from pathlib import Path
+    caminho = Path(caminho)
+    fronteira = uuid.uuid4().hex
+    partes = []
+    for nome, valor in (("chat_id", os.getenv("TELEGRAM_CHAT_ID").strip()), ("caption", legenda[:1000])):
+        partes.append(f'--{fronteira}\r\nContent-Disposition: form-data; name="{nome}"\r\n\r\n{valor}\r\n'.encode())
+    partes.append(
+        f'--{fronteira}\r\nContent-Disposition: form-data; name="document"; filename="{caminho.name}"\r\n'
+        f"Content-Type: application/octet-stream\r\n\r\n".encode() + caminho.read_bytes() + b"\r\n")
+    partes.append(f"--{fronteira}--\r\n".encode())
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendDocument", data=b"".join(partes),
+        headers={"Content-Type": f"multipart/form-data; boundary={fronteira}"})
+    try:
+        urllib.request.urlopen(req, timeout=120).read()
+    except Exception as erro:  # noqa: BLE001
+        print(f"   (aviso: não consegui enviar o arquivo ao Telegram: {erro})")
+
+
 def _ultimo_update() -> int:
     r = _api("getUpdates", {"timeout": 0})
     return max((u["update_id"] for u in r.get("result", [])), default=0)
@@ -58,9 +83,12 @@ def pedir_aprovacao(texto: str, espera_max: int = 3600) -> bool:
     limite = time.time() + espera_max
     while time.time() < limite:
         r = _api("getUpdates", {"offset": deslocamento, "timeout": 30,
-                                "allowed_updates": ["callback_query"]}, timeout=40)
+                                "allowed_updates": ["message", "callback_query"]}, timeout=40)
         for u in r.get("result", []):
             deslocamento = u["update_id"] + 1
+            if "message" in u:
+                enviar("⏳ Ainda estou esperando você aprovar ou rejeitar o plano acima.")
+                continue
             cb = u.get("callback_query") or {}
             resposta, _, cod = (cb.get("data") or "").partition(":")
             if cod != codigo or str(cb.get("message", {}).get("chat", {}).get("id")) != os.getenv("TELEGRAM_CHAT_ID").strip():

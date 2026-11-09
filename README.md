@@ -51,6 +51,29 @@ central-ia/
 └── tests/                     # testes offline
 ```
 
+## ❤️ O coração: um único comando, pelo Telegram
+
+Dê dois cliques em **`BOT-TELEGRAM.bat`** e deixe a janela minimizada. A partir daí,
+**tudo é pelo Telegram**: você escreve o pedido em texto livre, o superagente monta o plano,
+você aprova com um toque, acompanha cada etapa ao vivo e recebe o resultado completo
+(e a nota no Obsidian com status *pendente*).
+
+| No Telegram | O que acontece |
+|---|---|
+| texto livre | o superagente escolhe agentes e IAs |
+| `/conteudo <tema>` | dossiê → artigo-mãe → revisão → redes → **imagens** → roteiro YouTube |
+| `/rapido <pergunta>` | resposta direta |
+| `/status` · `/agentes` · `/ajuda` | situação das IAs, equipe, exemplos |
+
+### Quem faz o quê
+- **IAs por API**: Gemini, Groq (grátis), e as pagas opcionais (DeepSeek, Perplexity, Grok, Claude/OpenAI API).
+- **Suas assinaturas, via ferramentas oficiais de terminal** (`cli:claude`, `cli:codex`, `cli:gemini`),
+  instaladas em `~/.central-ia/ferramentas` e logadas uma única vez.
+- **Ollama**: local e privado.
+- **Imagens**: o agente `diretor_de_arte` planeja; `superagente/imagens.py` produz
+  (Gemini Nano Banana se faturamento ativo → Pexels grátis → rascunho por IA).
+- **Obsidian**: cada execução vira nota em `Central IA/Execuções` + painel `Central IA/Painel.base`.
+
 ## Jeito fácil (sem programar)
 
 1. Dê **dois cliques em `INICIAR.bat`** — abre um menu com números.

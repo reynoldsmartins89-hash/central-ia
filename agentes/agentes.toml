@@ -33,6 +33,11 @@ descricao = "Cria roteiro de vídeo para YouTube e Shorts."
 habilidade = "conteudo/roteiro-youtube"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 
+[agentes.diretor_de_arte]
+descricao = "Planeja as imagens de blog, Substack, LinkedIn e Instagram e as produz (banco de imagens ou IA)."
+habilidade = "conteudo/direcao-de-arte"
+modelos = ["gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+
 [agentes.revisor]
 descricao = "Revisa criticamente um texto: fatos, lógica, clareza e afirmações sem fonte."
 habilidade = "pesquisa/revisao-critica"

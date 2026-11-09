@@ -2,7 +2,7 @@
 # Uso: python main.py fluxo producao-editorial "Seu tema aqui"
 # Cada etapa recebe a entrada original + os resultados das etapas anteriores.
 
-descricao = "Tema → dossiê → artigo-mãe → revisão → derivados para redes → roteiro de YouTube"
+descricao = "Tema → dossiê → artigo-mãe → revisão → derivados para redes → imagens → roteiro de YouTube"
 
 [[etapas]]
 agente = "pesquisador"
@@ -19,6 +19,10 @@ tarefa = "Revise criticamente o artigo-mãe e liste as correções."
 [[etapas]]
 agente = "social"
 tarefa = "Crie os derivados para as redes sociais a partir do artigo-mãe, aplicando as correções da revisão."
+
+[[etapas]]
+agente = "diretor_de_arte"
+tarefa = "Planeje as imagens de todos os canais a partir do artigo-mãe e dos derivados (blog 3, Substack 4, LinkedIn 1, Instagram 1 por lâmina)."
 
 [[etapas]]
 agente = "roteirista"

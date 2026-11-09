@@ -17,7 +17,7 @@ import sys
 
 from superagente import habilidades, provedores, telegram
 from superagente.agentes import RAIZ, carregar_env, carregar_equipe
-from superagente.orquestrador import PASTA_FLUXOS, PASTA_RESULTADOS, Superagente
+from superagente.orquestrador import PASTA_FLUXOS, PASTA_RESULTADOS, PlanoCancelado, Superagente
 
 for fluxo_saida in (sys.stdout, sys.stderr):
     try:
@@ -73,6 +73,7 @@ def menu() -> list[str]:
     print("4) Ver o que está funcionando (diagnóstico)")
     print("5) Abrir a pasta de resultados")
     print("6) Conectar o Telegram")
+    print("7) 🤖 Ligar o bot do Telegram (comandar tudo pelo celular)")
     print("0) Sair")
     opcao = input("\nEscolha: ").strip()
     if opcao == "1":
@@ -94,6 +95,8 @@ def menu() -> list[str]:
         return ["sair"]
     if opcao == "6":
         return ["telegram"]
+    if opcao == "7":
+        return ["bot"]
     return ["sair"]
 
 
@@ -115,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("habilidades", help="lista as habilidades (SKILL.md)")
     sub.add_parser("fluxos", help="lista os fluxos fixos")
     sub.add_parser("telegram", help="conecta o seu Telegram (descobre o chat id)")
+    sub.add_parser("bot", help="liga o bot: comande a Central pelo Telegram")
 
     c = sub.add_parser("perguntar", help="fala direto com um agente")
     c.add_argument("agente")
@@ -138,6 +142,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "telegram":
         return configurar_telegram()
+
+    if a.comando == "bot":
+        from superagente import bot
+        bot.rodar()
+        return 0
 
     if a.comando == "agentes":
         mestre, equipe = carregar_equipe()
@@ -177,6 +186,10 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except PlanoCancelado as aviso:
+        print(f"
+{aviso}")
+        sys.exit(0)
     except provedores.ErroProvedor as erro:
         print(f"\n❌ {erro}\nDica: escolha 'diagnóstico' no menu e confira o arquivo .env")
         sys.exit(1)
