@@ -14,7 +14,7 @@ import unicodedata
 from datetime import datetime
 from pathlib import Path
 
-from . import imagens, obsidian, telegram
+from . import carrossel, imagens, obsidian, telegram
 from .agentes import RAIZ, Agente, carregar_equipe
 
 
@@ -110,6 +110,11 @@ class Superagente:
                 fontes = sorted({i.get("fonte", "falhou") for i in lista})
                 if self.ao_vivo and lista:
                     telegram.enviar(f"🖼 {sum('arquivo' in i for i in lista)}/{len(lista)} imagens prontas ({', '.join(fontes)})")
+            if agente.nome == "designer_carrossel" and not self.modelos_forcados:
+                laminas = carrossel.montar(resposta, pasta, log=self.log)
+                if self.ao_vivo:
+                    for lamina in laminas:
+                        telegram.enviar_arquivo(lamina, f"Carrossel — {lamina.stem}")
             contexto += f"\n\n## Resultado da etapa {i} ({agente.nome})\n{resposta}"
             registro["etapas"].append({**etapa, "modelo": modelo, "arquivo": arquivo.name})
 

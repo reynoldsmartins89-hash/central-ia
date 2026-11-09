@@ -2,9 +2,11 @@
 
 1. Gemini (Nano Banana) via API — melhor qualidade; exige faturamento ativado
    no Google AI Studio (a camada gratuita NÃO gera imagens). Ative com IMAGENS_GEMINI=1.
-2. Pexels — fotos reais, gratuitas para uso comercial. Chave grátis em
-   https://www.pexels.com/api/ → PEXELS_API_KEY no .env.
-3. Pollinations — geração por IA gratuita, sem chave. Qualidade de RASCUNHO
+2. Pexels — fotos reais, gratuitas para uso comercial (novas chaves estão pausadas
+   pelo Pexels; se você tiver uma, PEXELS_API_KEY no .env).
+3. Openverse — imagens livres (Creative Commons), sem chave. O crédito/licença
+   de cada imagem é registrado e deve acompanhar a publicação.
+4. Pollinations — geração por IA gratuita, sem chave. Qualidade de RASCUNHO
    (baixa resolução, marca d'água): serve para visualizar a ideia, não para publicar.
 
 O agente diretor_de_arte decide QUAIS imagens; este módulo as PRODUZ.
@@ -67,6 +69,29 @@ def _pexels(item: dict) -> bytes:
     return urllib.request.urlopen(req, timeout=60).read()
 
 
+def _openverse(item: dict) -> bytes:
+    """Banco de imagens livres (Creative Commons / domínio público). Não precisa de chave."""
+    busca = item.get("busca_en") or item["prompt_en"][:60]
+    url = ("https://api.openverse.org/v1/images/?page_size=10&license_type=commercial&q="
+           + urllib.parse.quote(busca))
+    resultados = json.loads(urllib.request.urlopen(
+        urllib.request.Request(url, headers=CABECALHO), timeout=30).read()).get("results", [])
+    retrato = item.get("formato") == "4:5"
+    candidatos = [r for r in resultados if (r.get("width") or 0) >= 1000
+                  and ((r.get("height") or 0) > (r.get("width") or 0)) == retrato] or \
+                 [r for r in resultados if (r.get("width") or 0) >= 800]
+    for foto in candidatos:
+        try:
+            dados = urllib.request.urlopen(urllib.request.Request(foto["url"], headers=CABECALHO), timeout=60).read()
+        except Exception:  # noqa: BLE001 — link quebrado; tenta a próxima
+            continue
+        item["credito"] = (f"{foto.get('title') or 'Imagem'} — {foto.get('creator') or 'autor desconhecido'}, "
+                           f"licença {foto['license'].upper()} {foto.get('license_version') or ''} "
+                           f"({foto.get('foreign_landing_url') or foto['url']})")
+        return dados
+    raise ErroProvedor("nenhuma imagem livre encontrada")
+
+
 def _pollinations(item: dict) -> bytes:
     largura, altura = DIMENSOES.get(item.get("formato", "16:9"), (1600, 900))
     url = (f"https://image.pollinations.ai/prompt/{urllib.parse.quote(item['prompt_en'])}"
@@ -75,7 +100,7 @@ def _pollinations(item: dict) -> bytes:
     return urllib.request.urlopen(urllib.request.Request(url, headers=CABECALHO), timeout=180).read()
 
 
-FONTES = (("gemini", _gemini), ("pexels", _pexels), ("pollinations", _pollinations))
+FONTES = (("gemini", _gemini), ("pexels", _pexels), ("openverse", _openverse), ("pollinations", _pollinations))
 
 
 def produzir(texto_diretor: str, pasta: Path, log=print) -> list[dict]:

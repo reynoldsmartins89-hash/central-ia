@@ -33,7 +33,7 @@ class TestCentral(unittest.TestCase):
         pasta = sa.fluxo("producao-editorial", "teste automatizado")
         try:
             self.assertTrue((pasta / "registro.json").exists())
-            self.assertTrue((pasta / "06-roteirista.md").exists())
+            self.assertTrue((pasta / "07-roteirista.md").exists())
             self.assertTrue((pasta / "RESULTADO-COMPLETO.md").exists())
         finally:
             shutil.rmtree(pasta)
@@ -43,6 +43,18 @@ class TestCentral(unittest.TestCase):
         texto = 'Conceito...\n```json\n[{"canal": "blog", "nome": "blog-capa", "prompt_en": "x"}]\n```'
         self.assertEqual(extrair_lista(texto)[0]["nome"], "blog-capa")
         self.assertEqual(extrair_lista("sem json"), [])
+
+    def test_carrossel_monta_laminas(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import carrossel
+        texto = ('```json\n[{"lamina": 1, "titulo": "IA para pequenas empresas", "texto": ""},'
+                 ' {"lamina": 2, "titulo": "Comece pelo atendimento", "texto": "Respostas automáticas no WhatsApp."}]\n```')
+        with tempfile.TemporaryDirectory() as tmp:
+            laminas = carrossel.montar(texto, Path(tmp), log=lambda *_: None)
+            self.assertEqual(len(laminas), 2)
+            from PIL import Image
+            self.assertEqual(Image.open(laminas[0]).size, (1080, 1350))
 
     def test_superagente_sem_plano_valido_usa_generalista(self):
         sa = Superagente(forcar_modelo="eco:teste", log=lambda *_: None)

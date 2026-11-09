@@ -38,6 +38,11 @@ descricao = "Planeja as imagens de blog, Substack, LinkedIn e Instagram e as pro
 habilidade = "conteudo/direcao-de-arte"
 modelos = ["gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 
+[agentes.designer_carrossel]
+descricao = "Escreve as lâminas do carrossel do Instagram e as monta como imagens prontas (1080x1350)."
+habilidade = "conteudo/design-carrossel"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+
 [agentes.revisor]
 descricao = "Revisa criticamente um texto: fatos, lógica, clareza e afirmações sem fonte."
 habilidade = "pesquisa/revisao-critica"

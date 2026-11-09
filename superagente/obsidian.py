@@ -120,5 +120,13 @@ def salvar_execucao(titulo: str, tipo: str, registro: dict, pasta_resultado: Pat
             shutil.copy2(pasta_resultado / "imagens" / item["arquivo"], destino / item["arquivo"])
             linhas += [f"**{item['nome']}** ({item.get('canal', '')}, {item.get('formato', '')}) — {item.get('credito', item.get('fonte', ''))}",
                        f"![[{SUBPASTA}/Imagens/{nota.stem}/{item['arquivo']}]]", f"*{item.get('alt', '')}*", ""]
+    laminas = sorted((pasta_resultado / "carrossel").glob("lamina-*.jpg"))
+    if laminas:
+        destino = raiz / "Imagens" / nota.stem / "carrossel"
+        destino.mkdir(parents=True, exist_ok=True)
+        linhas += ["## Carrossel do Instagram (pronto para postar)", ""]
+        for lamina in laminas:
+            shutil.copy2(lamina, destino / lamina.name)
+            linhas.append(f"![[{SUBPASTA}/Imagens/{nota.stem}/carrossel/{lamina.name}|300]]")
     nota.write_text("\n".join(linhas), encoding="utf-8")
     return nota
