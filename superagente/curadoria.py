@@ -24,6 +24,7 @@ TRECHO = 900                 # caracteres de cada candidato mostrados à IA (in�
 JUIZES = ["cli:claude/haiku", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b"]   # Haiku: rigoroso e rápido
 NOTA_MINIMA = 7
 EXTENSOES_DRIVE = {".md", ".txt", ".pdf", ".docx", ".pptx", ".epub", ".odt", ".doc", ".rtf", ".html"}
+DOCUMENTOS = {".pdf", ".docx", ".doc", ".pptx", ".epub", ".odt", ".rtf", ".txt", ".md", ".html"}
 MIDIA = {".mp4", ".mkv", ".avi", ".mov", ".mp3", ".m4a", ".wav", ".ogg", ".webm", ".wmv"}
 
 TEMAS = {
@@ -122,7 +123,7 @@ def _candidatos_drive(palavras: list[str]) -> tuple[dict[str, dict], list[str]]:
 def _ler_drive(item: dict) -> str:
     from . import leitor
     try:
-        _, _, texto = leitor.ler(item["local"])
+        _, _, texto = leitor.ler_completo(item["local"])
         return texto or ""
     except Exception:  # noqa: BLE001
         return ""
@@ -229,6 +230,14 @@ def indexar(agente: str, candidatos: dict | None = None, log=print) -> dict:
         if not item:
             continue
         texto = item["texto"] if item["texto"] is not None else _ler_drive(item)
+        if item["fonte"] == "hd" and Path(caminho).suffix.lower() in DOCUMENTOS and Path(caminho).exists():
+            try:   # o acervo guarda só o início dos documentos: o aprovado entra por INTEIRO
+                from . import leitor
+                completo = leitor.ler_completo(caminho)[2]
+                if len(completo or "") > len(texto or ""):
+                    texto = completo
+            except Exception:  # noqa: BLE001
+                pass
         texto = _limpar(texto or "")
         if not texto:
             continue

@@ -41,6 +41,23 @@ def coletar() -> None:
     L.coletar_links(LIVRO)
 
 
+def arquivos(escaneados: bool = False) -> None:
+    """(Re)lê os livros anexados com o TEXTO INTEIRO. escaneados=True inclui os digitalizados (OCR, demorado)."""
+    import pypdfium2
+    pdfs = sorted(p for p in ANEXOS.rglob("*.pdf") if "_thumb" not in p.name)
+    escolhidos = []
+    for p in pdfs:
+        doc = pypdfium2.PdfDocument(str(p))
+        tem_texto = sum(len(doc[i].get_textpage().get_text_range()) for i in range(0, len(doc), max(1, len(doc) // 8))) > 500
+        if tem_texto != escaneados:
+            escolhidos.append(p)
+    for p in escolhidos:   # apaga a versão cortada (só o início) para reler por inteiro
+        fonte = LIVRO.fontes / f"arquivo_{__import__('hashlib').sha1(str(p).encode()).hexdigest()[:10]}.md"
+        if fonte.exists() and fonte.stat().st_size < 20_000:
+            fonte.unlink()
+    L.coletar_arquivos(LIVRO, escolhidos)
+
+
 def aulas() -> None:
     videos = sorted(CURSO.rglob("*.mp4"))
     print(f"🎬 {len(videos)} videoaulas do curso", flush=True)
@@ -63,4 +80,5 @@ def escrever() -> None:
 
 
 if __name__ == "__main__":
-    {"coletar": coletar, "aulas": aulas, "escrever": escrever}[sys.argv[1]]()
+    {"coletar": coletar, "aulas": aulas, "escrever": escrever, "arquivos": arquivos,
+     "escaneados": lambda: arquivos(escaneados=True)}[sys.argv[1]]()

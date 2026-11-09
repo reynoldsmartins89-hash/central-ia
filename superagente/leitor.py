@@ -203,6 +203,22 @@ def ler(caminho: str) -> tuple[str, str, str]:
     return tipo, metodo, texto
 
 
+def ler_completo(caminho: str, limite: int = 3_000_000) -> tuple[str, str, str]:
+    """Como ler(), mas com o TEXTO INTEIRO (livros, apostilas): ler() só traz o início, para classificar."""
+    tipo = tipo_de(caminho) or "outro"
+    if tipo in ("audio/video", "imagem"):
+        return ler(caminho)
+    antigo = extrator.LIMITE
+    extrator.LIMITE = limite
+    try:
+        metodo, texto = extrator.extrair(caminho)
+    finally:
+        extrator.LIMITE = antigo
+    if Path(caminho).suffix.lower() == ".pdf" and metodo == "ilegível":
+        return ("pdf escaneado", *_ler_pdf_escaneado(caminho, paginas=100_000))   # todas as páginas
+    return tipo, metodo, texto
+
+
 def _extrair_tudo(caminho: str) -> str:
     """Para a ficha de documentos queremos o texto inteiro (o extrator lê só o início)."""
     antigo = extrator.LIMITE

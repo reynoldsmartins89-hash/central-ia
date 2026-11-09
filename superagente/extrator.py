@@ -56,7 +56,8 @@ def _pdf(caminho: Path) -> str:
     partes = []
     if leitor.metadata and leitor.metadata.title:
         partes.append(f"Título: {leitor.metadata.title}")
-    for pagina in leitor.pages[:4]:
+    # para CLASSIFICAR basta o início (4 páginas); no modo "texto inteiro" (LIMITE grande) lê o livro todo
+    for pagina in leitor.pages[:4] if LIMITE <= 3000 else leitor.pages:
         partes.append(pagina.extract_text() or "")
         if sum(map(len, partes)) > LIMITE:
             break

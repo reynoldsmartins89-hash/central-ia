@@ -164,7 +164,7 @@ def coletar_arquivos(livro: Livro, caminhos: list[str | Path], log=print) -> int
         if livro.ja_tem(str(caminho), "arquivo"):
             continue
         try:
-            _, metodo, texto = leitor.ler(str(caminho))
+            _, metodo, texto = leitor.ler_completo(str(caminho))
         except Exception as erro:  # noqa: BLE001
             log(f"   ⚠ {caminho.name}: {erro}")
             continue
