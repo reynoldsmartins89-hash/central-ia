@@ -91,8 +91,10 @@ def enviar_recuperadas(album: str = "Fotos recuperadas (Central IA)", tamanho: s
         try:
             _rodar("copy", str(pasta), f"{REMOTO}:album/{album}", "--files-from", lista.name,
                    "--transfers", "4", "--retries", "5", "--low-level-retries", "20", timeout=None)
+            log(f"   pasta {n}/{len(por_pasta)} enviada ({len(nomes)} fotos)")
+        except RuntimeError as erro:   # o Google recusou alguma foto: segue com as outras
+            log(f"   ⚠ pasta {n}/{len(por_pasta)}: o Google recusou parte das fotos ({str(erro)[-120:]})")
         finally:
             os.unlink(lista.name)
-        log(f"   pasta {n}/{len(por_pasta)} enviada ({len(nomes)} fotos)")
     log(f"✅ Enviadas. Abra photos.google.com → Álbuns → '{album}'.")
     return len(arquivos)
