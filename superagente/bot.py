@@ -9,6 +9,7 @@ Iniciar:  python main.py bot   (ou dois cliques em BOT-TELEGRAM.bat)
 from __future__ import annotations
 
 import os
+import re
 import time
 import traceback
 
@@ -178,6 +179,10 @@ def tratar(texto: str) -> None:
         return
     if not comando.startswith("/"):
         from . import executor
+        proposta = memoria.ultima_fala_central()
+        if eh_confirmacao(texto) and proposta:
+            _fazer_o_proposto(sa, texto, proposta)
+            return
         modo = modo_da_mensagem(texto)
         if modo == "acao" and caixa_postal.papel() == "nuvem" and executor.classificar(texto) == "acao":
             raise caixa_postal.PrecisaDoPC("ordem para o PC")
@@ -216,6 +221,30 @@ PEDIDOS_DE_PRODUCAO = ("artigo", "post", "posts", "carrossel", "roteiro", "dossi
                        "plano de ação", "plano de negócio", "plano de estudos", "apresentação", "campanha",
                        "produza", "elabore", "redija", "monte um", "monte uma", "desenvolva um", "desenvolva uma",
                        "escreva um", "escreva uma", "crie um", "crie uma")
+
+
+CONFIRMACAO = re.compile(r"^(?:[✅👍]|(?:sim|ok|okay|pode|faça|faca|faz|execute|executa|aprovad[oa]|aprovo|"
+                         r"confirmo|manda ver|vai|bora|quero)\b)", re.IGNORECASE)
+
+
+def eh_confirmacao(texto: str) -> bool:
+    """'sim', 'pode fazer', '✅', 'ok, execute'… — resposta curta concordando com a proposta anterior."""
+    limpo = re.sub(r"[^\w✅👍 ]+", " ", texto.strip().lower()).strip()
+    return bool(limpo) and "?" not in texto and len(limpo.split()) <= 5 and bool(CONFIRMACAO.match(limpo))
+
+
+def _fazer_o_proposto(sa: Superagente, texto: str, proposta: str) -> None:
+    """O usuário concordou com o que a Central propôs: vira um plano DE VERDADE, com botões Aprovar/Rejeitar."""
+    from . import executor
+    pedido = (f"Faça o que a Central propôs na última mensagem (o usuário respondeu “{texto}”).\n\n"
+              f"--- Proposta da Central ---\n{proposta[-3500:]}")
+    telegram.enviar("👍 Entendi: você quer que eu faça o que propus. Vou montar o plano — nada acontece "
+                    "antes de você tocar em ✅ Aprovar.")
+    if executor.classificar(proposta[-3000:]) == "acao":
+        _executar_no_pc(pedido)
+    else:
+        sa.aprovar = lambda plano: telegram.pedir_aprovacao(formatar_plano(plano))   # sempre com botões
+        _tarefa_em_equipe(sa, pedido)
 
 
 def modo_da_mensagem(texto: str) -> str:

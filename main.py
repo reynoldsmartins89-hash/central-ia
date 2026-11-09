@@ -143,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
     c_rep.add_argument("alvo", nargs="?", default="")
     c_rep.add_argument("--limite", type=int, default=None)
     sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
+    c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
+    c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
     c_cx.add_argument("acao", choices=["receber", "pegar", "espiar", "sincronizar", "status"])
     c_cx.add_argument("espera", nargs="?", type=int, default=25)
@@ -178,6 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "telegram":
         return configurar_telegram()
 
+    if a.comando == "avisar":
+        from superagente import telegram
+        telegram.enviar(a.texto)
+        return 0
     if a.comando == "caixa":
         import json as _json
         from superagente import caixa_postal

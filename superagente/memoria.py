@@ -76,6 +76,13 @@ def historico(limite: int = LIMITE_HISTORICO) -> str:
     return "\n\n".join(reversed(falas))
 
 
+def ultima_fala_central() -> str:
+    for fala in reversed(_conversa()["falas"]):
+        if fala["quem"] == "central":
+            return fala["texto"]
+    return ""
+
+
 def ultima_fala_sua() -> str:
     for fala in reversed(_conversa()["falas"]):
         if fala["quem"] == "voce":

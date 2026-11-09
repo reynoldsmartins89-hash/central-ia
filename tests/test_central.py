@@ -369,3 +369,13 @@ class TestCaixaPostal(unittest.TestCase):
         con.close()
         self.assertTrue(self.cp.pc_online())
         self.assertEqual(self.cp.pegar("nuvem", espera=0), [])        # PC ligado: nuvem não atende
+
+
+class TestConfirmacao(unittest.TestCase):
+    def test_sim_vira_plano_com_botoes_e_pergunta_nao(self):
+        from superagente.bot import eh_confirmacao
+        for t in ("✅", "sim", "Sim, pode fazer.", "ok execute", "pode", "aprovado"):
+            self.assertTrue(eh_confirmacao(t), t)
+        for t in ("não", "vai chover amanhã?", "simples pergunta: o que é COF?",
+                  "sim, mas antes me explique melhor o terceiro item da lista"):
+            self.assertFalse(eh_confirmacao(t), t)
