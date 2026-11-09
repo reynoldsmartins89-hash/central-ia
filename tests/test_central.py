@@ -438,3 +438,15 @@ class TestGrupos(unittest.TestCase):
         partes = self.g._trechos("\n".join(["x" * 100] * 30), tamanho=1000)
         self.assertEqual(len(partes), 4)
         self.assertEqual(sum(p.count("\n") + 1 for p in partes), 30)   # nenhuma linha perdida
+
+
+class TestConversaNatural(unittest.TestCase):
+    def test_markdown_vira_formatacao_do_telegram(self):
+        from superagente.telegram import formatar_html
+        html = formatar_html("### Título\n| A | B |\n|---|---|\n| **x** | y < z |\n- item\n[site](https://x.org)")
+        self.assertNotIn("#", html)
+        self.assertNotIn("|", html)
+        self.assertNotIn("**", html)
+        self.assertIn("<b>Título</b>", html)
+        self.assertIn("• <b>x</b> — y &lt; z", html)
+        self.assertIn('<a href="https://x.org">site</a>', html)

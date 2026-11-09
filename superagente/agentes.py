@@ -19,7 +19,9 @@ REGRAS_GERAIS = (
     "pastas, programas, scripts, HDs e Drive) quando ele manda a ordem pelo Telegram (/pc <ordem>, ou só "
     "escrever a ordem). Nunca diga que ninguém pode executar: se a tarefa exigir ação no computador, "
     "descreva-a e termine dizendo EXATAMENTE: 'Para eu fazer isso, responda *sim* — vou mostrar o plano "
-    "com os botões ✅ Aprovar / ❌ Rejeitar.' Nunca peça para o usuário mandar só um emoji ✅."
+    "com os botões ✅ Aprovar / ❌ Rejeitar.' Nunca peça para o usuário mandar só um emoji ✅. "
+    "NUNCA diga que algo já foi executado, iniciado ou confirmado, e NUNCA invente comandos, scripts ou nomes "
+    "de arquivo: você só escreve; quem executa é o Executor, depois do botão Aprovar."
 )
 
 
@@ -51,7 +53,7 @@ class Agente:
         return lista
 
     def executar(self, tarefa: str, contexto: str = "", modelos: list[str] | None = None,
-                 log=print, consulta: str | None = None) -> tuple[str, str]:
+                 log=print, consulta: str | None = None, conversa: bool = False) -> tuple[str, str]:
         """Executa a tarefa. Retorna (modelo_usado, resposta).
         `consulta`: texto usado para buscar na biblioteca/acervo (padrão: a própria tarefa)."""
         busca = consulta or tarefa
@@ -70,10 +72,11 @@ class Agente:
             if trechos:
                 log(f"   📚 {len(trechos)} trechos da biblioteca de {self.nome}")
                 mensagem = f"{conhecimento.como_contexto(trechos)}\n\n{mensagem}"
-                sistema += REGRAS_BIBLIOTECA
+                sistema += REGRAS_CONVERSA if conversa else REGRAS_BIBLIOTECA
             else:
                 log(f"   📚 nada encontrado na biblioteca de {self.nome} (está indexada?)")
-                sistema += "\nNenhum trecho da biblioteca foi encontrado para esta tarefa: avise isso no início da resposta."
+                if not conversa:
+                    sistema += "\nNenhum trecho da biblioteca foi encontrado para esta tarefa: avise isso no início da resposta."
         if self.acervo:
             from . import conhecimento, leitor
             achados = leitor.buscar(busca)
@@ -83,11 +86,18 @@ class Agente:
                     "Trechos da sua biblioteca", "Materiais do seu acervo pessoal (Drive e HDs)")
                     + f"\n\n{mensagem}")
                 sistema += ("\n\nVocê recebeu materiais do acervo pessoal do usuário: aproveite-os quando forem "
-                            "relevantes, cite-os como [n] e aponte se algum merece leitura completa.")
+                            + ("relevantes, mencionando-os com naturalidade (sem marcadores [n])." if conversa else
+                               "relevantes, cite-os como [n] e aponte se algum merece leitura completa."))
         if contexto:
             mensagem = f"## Contexto (resultados anteriores)\n{contexto}\n\n{mensagem}"
         return provedores.chamar_com_reserva(self.modelos_permitidos(modelos), sistema, mensagem, log=log)
 
+
+REGRAS_CONVERSA = (
+    "\n\nVocê recebeu trechos da biblioteca pessoal do usuário: use o que for útil, com naturalidade, explicando "
+    "com suas palavras (nunca copie trechos longos). Se for relevante, mencione a obra ou o curso de onde veio "
+    "a ideia, de forma natural (ex.: 'no curso X que você tem…'), sem marcadores [n] nem lista de fontes."
+)
 
 REGRAS_BIBLIOTECA = (
     "\n\nVocê é um agente de conhecimento: fundamente a resposta nos trechos da biblioteca fornecidos, "

@@ -95,6 +95,15 @@ def ler_documento(caminho: Path) -> str:
     return (texto or "")[:LIMITE_DOCUMENTO]
 
 
+def _acao(qual: str) -> None:
+    """Mostra "gravando…/digitando…" no Telegram em vez de mandar mensagens de aviso."""
+    try:
+        from .telegram import _api
+        _api("sendChatAction", {"chat_id": os.getenv("TELEGRAM_CHAT_ID", "").strip(), "action": qual})
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def entrada(msg: dict, avisar=lambda _t: None) -> str | None:
     """Converte a mensagem do Telegram (texto, voz, áudio, foto ou documento) em texto para a Central."""
     legenda = (msg.get("caption") or "").strip()
@@ -102,16 +111,16 @@ def entrada(msg: dict, avisar=lambda _t: None) -> str | None:
         return msg["text"].strip()
     if msg.get("voice") or msg.get("audio") or msg.get("video_note") or msg.get("video"):
         midia = msg.get("voice") or msg.get("audio") or msg.get("video_note") or msg["video"]
-        avisar("🎙 Ouvindo seu áudio…")
+        _acao("typing")
         arquivo = baixar(midia["file_id"], midia.get("file_name") or "audio.ogg")
         texto = transcrever(arquivo)
         if not texto:
             avisar("🎙 Não consegui entender o áudio. Pode repetir?")
             return None
-        avisar(f"🎙 Entendi: “{texto[:600]}”")
+        avisar(f"🎙 _{texto[:400]}{'…' if len(texto) > 400 else ''}_")
         return f"{texto}\n{legenda}".strip()
     if msg.get("photo"):
-        avisar("🖼 Olhando a foto…")
+        _acao("typing")
         foto = max(msg["photo"], key=lambda f: f.get("file_size", 0))
         arquivo = baixar(foto["file_id"], "foto.jpg")
         quem, descricao = ver_imagem(arquivo)

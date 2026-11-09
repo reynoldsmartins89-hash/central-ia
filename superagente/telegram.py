@@ -30,17 +30,61 @@ def _api(metodo: str, dados: dict | None = None, timeout: float = 40) -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
+def formatar_html(texto: str) -> str:
+    """Markdown das IAs → formatação do Telegram (negrito, itálico, links, listas), sem símbolos crus."""
+    import html
+    import re
+    blocos, saida = re.split(r"```(?:\w+)?\n?(.*?)```", texto, flags=re.S), []
+    for i, bloco in enumerate(blocos):
+        if i % 2:   # bloco de código
+            saida.append(f"<pre>{html.escape(bloco.strip())}</pre>")
+            continue
+        linhas = []
+        for linha in bloco.split("\n"):
+            bruta = linha.strip()
+            if re.fullmatch(r"\|?[\s:|-]+\|?", bruta) and "-" in bruta:
+                continue                                  # linha separadora de tabela
+            if re.fullmatch(r"(-{3,}|\*{3,}|_{3,})", bruta):
+                linhas.append("")                         # régua horizontal
+                continue
+            if bruta.startswith("|") and bruta.endswith("|"):
+                celulas = [c.strip() for c in bruta.strip("|").split("|")]
+                linha = "• " + " — ".join(c for c in celulas if c)
+            linha = html.escape(linha, quote=False)
+            titulo = re.match(r"\s*#{1,6}\s+(.*)", linha)
+            if titulo:
+                linha = f"<b>{titulo.group(1).strip('* ')}</b>"
+            linha = re.sub(r"^(\s*)[-*]\s+", r"\1• ", linha)
+            linha = re.sub(r"^(\s*)&gt;\s?", r"\1▎ ", linha)
+            linhas.append(linha)
+        parte = "\n".join(linhas)
+        parte = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", parte)
+        parte = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", parte, flags=re.S)
+        parte = re.sub(r"__(.+?)__", r"<b>\1</b>", parte, flags=re.S)
+        parte = re.sub(r"(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", parte)
+        parte = re.sub(r"(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])", r"<i>\1</i>", parte)
+        parte = re.sub(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', parte)
+        saida.append(parte)
+    return re.sub(r"\n{3,}", "\n\n", "".join(saida)).strip()
+
+
 def enviar(texto: str, botoes: list[tuple[str, str]] | None = None) -> None:
-    """Envia uma mensagem. Falhas do Telegram nunca interrompem o trabalho."""
+    """Envia uma mensagem, já formatada. Falhas do Telegram nunca interrompem o trabalho."""
     if not configurado():
         return
-    dados = {"chat_id": os.getenv("TELEGRAM_CHAT_ID").strip(), "text": texto[:LIMITE_TEXTO]}
+    dados = {"chat_id": os.getenv("TELEGRAM_CHAT_ID").strip(), "text": formatar_html(texto[:LIMITE_TEXTO]),
+             "parse_mode": "HTML", "link_preview_options": {"is_disabled": True}}
     if botoes:
         dados["reply_markup"] = {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in botoes]]}
     try:
         _api("sendMessage", dados)
-    except Exception as erro:  # noqa: BLE001
-        print(f"   (aviso: não consegui enviar ao Telegram: {erro})")
+    except Exception:  # noqa: BLE001 — formatação recusada? manda como texto simples
+        dados.pop("parse_mode")
+        dados["text"] = texto[:LIMITE_TEXTO]
+        try:
+            _api("sendMessage", dados)
+        except Exception as erro:  # noqa: BLE001
+            print(f"   (aviso: não consegui enviar ao Telegram: {erro})")
 
 
 def enviar_arquivo(caminho, legenda: str = "") -> None:

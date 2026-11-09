@@ -52,7 +52,7 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
    (na legenda, o assunto, se quiser) — a Central lê TUDO e devolve o relatório
 • /grupo <nome> [sobre <assunto>] — relatório do grupo (Telegram: lê pela sua conta)
    ou escreva: "me dê o relatório do grupo X sobre Y"
-• /grupos — grupos guardados · /acompanhar <nome> — relatório toda semana · /parar_grupo <nome>
+• /grupos — os grupos que a Central já leu
 
 🗃 ARQUIVOS (Drive e HDs)
 • /buscar <assunto> — onde estão seus arquivos sobre um assunto
@@ -345,29 +345,74 @@ def _digitando() -> None:
         pass
 
 
+class _Digitando:
+    """Mantém o "digitando…" aparecendo no Telegram enquanto a resposta é escrita (como no ChatGPT)."""
+
+    def __enter__(self):
+        import threading
+        self._parar = threading.Event()
+
+        def manter():
+            while not self._parar.is_set():
+                _digitando()
+                self._parar.wait(4)
+        threading.Thread(target=manter, daemon=True).start()
+        return self
+
+    def __exit__(self, *_):
+        self._parar.set()
+
+
 def _enviar_longo(texto: str) -> None:
     for i in range(0, len(texto), 3800):
         telegram.enviar(texto[i:i + 3800])
 
 
+# o modelo que escreve de forma mais natural vem primeiro na conversa (os demais ficam de reserva);
+# agentes privados continuam só com IA local (o próprio agente filtra)
+MODELO_DA_CONVERSA = os.getenv("MODELO_DA_CONVERSA", "gemini:gemini-3.5-flash")
+
+
+VOZ_DA_CONVERSA = """Você está numa CONVERSA de chat (Telegram) com o Reynolds — como o ChatGPT, o Claude ou o
+Gemini conversam: natural, humano, caloroso e inteligente. Regras desta conversa:
+- Escreva como uma pessoa que domina o assunto conversando: parágrafos curtos, linguagem simples e direta.
+- NADA de tabelas, títulos (#) ou "etapas | como aprovar". Listas só quando ajudarem de verdade (no máximo 5 itens).
+- Negrito com moderação, só para o essencial. Nada de citações [n] a não ser que ele peça as fontes.
+- Não comece com "Entendi!", "Perfeito!", "Ótima pergunta" nem repita o pedido dele: vá direto ao conteúdo.
+- Use o que você sabe da conversa e do perfil dele; se fizer sentido, termine com UMA pergunta para continuar o papo.
+- Se não achou nada nas bibliotecas dele, simplesmente responda com o seu conhecimento — sem avisos técnicos.
+- HONESTIDADE ABSOLUTA: você NÃO executa nada nesta resposta. Nunca diga que algo foi feito, iniciado,
+  confirmado, agendado ou que "o Executor está pronto". Nunca invente comandos, scripts ou nomes de arquivo.
+- Se o pedido exigir AÇÃO (no PC, nos arquivos, criar algo no sistema), explique em 1–3 frases o que dá para
+  fazer e termine com: "Quer que eu faça? É só responder sim." — e nada mais sobre comandos."""
+
+
 def conversar(texto: str, especialista: bool = True) -> str:
-    """Modo conversa: resposta direta e rápida, com memória e com o acervo do especialista certo."""
-    _digitando()
-    anterior = memoria.ultima_fala_sua()
-    agente = _escolher_especialista(f"{anterior} {texto}") if especialista else carregar_equipe()[1]["generalista"]
-    contexto = memoria.contexto()
-    tarefa = (f"{contexto}\n\n## Mensagem atual do usuário\n{texto}\n\n"
-              "Responda à MENSAGEM ATUAL em tom de conversa, direto ao ponto (como num chat), usando a "
-              "conversa acima para entender referências. Seja completo mas enxuto; se o assunto pedir um "
-              "trabalho grande (artigo, estudo completo), responda o essencial e sugira usar /tarefa.")
-    memoria.adicionar("voce", texto)
-    modelo, resposta = agente.executar(tarefa, log=lambda *_: None, consulta=f"{anterior} {texto}")
+    """Modo conversa: resposta natural, com memória e com o acervo do especialista certo."""
+    with _Digitando():
+        anterior = memoria.ultima_fala_sua()
+        agente = (_escolher_especialista(f"{anterior} {texto}") if especialista
+                  else carregar_equipe()[1]["generalista"])
+        contexto = memoria.contexto()
+        tarefa = (f"{VOZ_DA_CONVERSA}\n\n{contexto}\n\n## Mensagem atual do Reynolds\n{texto}\n\n"
+                  "Responda à mensagem atual, usando a conversa acima para entender referências.")
+        memoria.adicionar("voce", texto)
+        modelos = [MODELO_DA_CONVERSA] + [m for m in agente.modelos if m != MODELO_DA_CONVERSA]
+        _, resposta = agente.executar(tarefa, modelos=modelos, log=lambda *_: None,
+                                      consulta=f"{anterior} {texto}", conversa=True)
     memoria.adicionar("central", resposta)
-    rotulo = "" if agente.nome == "generalista" else f"📚 {agente.nome} · "
-    if caixa_postal.papel() == "nuvem":
-        rotulo = f"☁️ {rotulo}"
-    _enviar_longo(f"{rotulo}{modelo.split(':')[0]}\n\n{resposta}")
+    assinatura = "" if agente.nome == "generalista" else f"\n\n— _{NOMES_BONITOS.get(agente.nome, agente.nome)}_"
+    nuvem = "☁️ " if caixa_postal.papel() == "nuvem" else ""
+    _enviar_longo(f"{nuvem}{resposta}{assinatura}")
     return resposta
+
+
+NOMES_BONITOS = {"geopolitica": "Geopolítica", "politica": "Política", "filosofia_catolica": "Filosofia Católica",
+                 "cof": "COF", "comunicacao": "Comunicação", "marketing_digital": "Marketing Digital",
+                 "ciencia_de_dados": "Ciência de Dados", "geoprocessamento": "Geoprocessamento",
+                 "cyberseguranca": "Cibersegurança", "seguranca_publica": "Segurança Pública",
+                 "viver_de_estudo": "Viver de Estudo", "orientador_linkedin": "Mentor de LinkedIn",
+                 "orientador_github": "Mentor de GitHub", "poliglota": "Idiomas"}
 
 
 def _tarefa_em_equipe(sa: Superagente, texto: str) -> None:
