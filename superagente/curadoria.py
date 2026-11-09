@@ -49,9 +49,10 @@ TEMAS = {
             '"inteligências múltiplas"', '"processo de aprendizagem"', '"teorias da aprendizagem"',
             "homeschooling", '"educação domiciliar"', '"técnicas de aprendizado"', '"tipos de aprendizado"',
             '"curva de aprendizagem"', "piaget", "vygotsky", "montessori", "mnemônica", "memorização"],
-        "drive_nomes": ["educa", "aprendiz", "aprender", "neuroci", "pedagog", "estud", "trivium", "quadrivium",
-                        "escolást", "patríst", "leitura", "memória", "memoriz", "inteligên", "didát",
-                        "alfabetiz", "montessori", "cognit", "auto-educ", "autoeduc"],
+        # só palavras específicas: "estud", "leitura" e "inteligência" pegavam milhares de pastas de outros assuntos
+        "drive_nomes": ["educa", "aprendiz", "aprender", "neuroci", "pedagog", "trivium", "quadrivium",
+                        "escolást", "patríst", "memória", "memoriz", "didát", "alfabetiz", "montessori",
+                        "cognit", "auto-educ", "autoeduc", "vida intelectual", "técnicas de estudo", "como estudar"],
     },
 }
 
@@ -89,8 +90,9 @@ def _candidatos_bibliotecas(termos: list[str], ignorar: set[str]) -> dict[str, d
         if not banco.exists():
             continue
         con = sqlite3.connect(banco, timeout=60)
-        achados = {c for (c,) in con.execute("SELECT DISTINCT caminho FROM trechos WHERE trechos MATCH ?",
-                                             (" OR ".join(termos),))}
+        # o tema precisa aparecer em pelo menos 6 trechos do arquivo (citar de passagem não basta)
+        achados = {c for c, _ in con.execute("SELECT caminho, COUNT(*) FROM trechos WHERE trechos MATCH ? "
+                                             "GROUP BY caminho HAVING COUNT(*) >= 6", (" OR ".join(termos),))}
         textos: dict[str, list[str]] = {}
         titulos: dict[str, str] = {}
         for caminho, titulo, texto in con.execute("SELECT caminho, titulo, texto FROM trechos"):   # UMA varredura
