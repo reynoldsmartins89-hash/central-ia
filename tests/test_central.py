@@ -279,7 +279,7 @@ class TestOrdensComPcDesligado(unittest.TestCase):
         from superagente import bot
         agora = _t.time()
         updates = {"result": [
-            {"update_id": 10, "message": {"chat": {"id": 1}, "text": "velha", "date": agora - 30 * 3600}},
+            {"update_id": 10, "message": {"chat": {"id": 1}, "text": "velha", "date": agora - 80 * 3600}},
             {"update_id": 11, "message": {"chat": {"id": 999}, "text": "estranho", "date": agora}},
             {"update_id": 12, "message": {"chat": {"id": 1}, "text": "/pc feche o Obsidian", "date": agora - 600}},
         ]}
@@ -296,3 +296,31 @@ class TestOrdensComPcDesligado(unittest.TestCase):
         with mock.patch.object(bot.telegram, "_api", return_value={"result": [{"update_id": 5, "message": {}}]}), \
                 mock.patch.object(bot.telegram, "enviar"):
             self.assertEqual(bot._pendentes_ao_ligar("1"), 6)
+
+
+class TestExclusaoSegura(unittest.TestCase):
+    def test_so_apaga_copia_identica_com_original_presente(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from superagente import duplicados
+        with tempfile.TemporaryDirectory() as d:
+            original, copia, sozinha = Path(d) / "o.bin", Path(d) / "c.bin", Path(d) / "s.bin"
+            original.write_bytes(b"x" * 5000)
+            copia.write_bytes(b"x" * 5000)
+            sozinha.write_bytes(b"y" * 5000)
+            grupo = duplicados._completo(str(original))
+
+            class Con:
+                def __init__(self, existe):
+                    self.existe = existe
+
+                def execute(self, *_):
+                    return mock.Mock(fetchall=lambda: [(str(original) if self.existe else str(Path(d) / "x"),)])
+
+            r, _, _ = duplicados._conferir_um(Con(True), "antiga", grupo, {"antiga": str(copia)})
+            self.assertEqual(r, "identico")
+            r, _, _ = duplicados._conferir_um(Con(False), "antiga", grupo, {"antiga": str(copia)})
+            self.assertEqual(r, "sem_original")
+            r, _, _ = duplicados._conferir_um(Con(True), "antiga", grupo, {"antiga": str(sozinha)})
+            self.assertEqual(r, "divergente")

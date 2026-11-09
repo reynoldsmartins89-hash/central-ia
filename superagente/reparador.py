@@ -175,12 +175,15 @@ def _reparar_pacote(origem: Path, destino: Path) -> str:
 def _reparar_imagem(origem: Path, destino: Path) -> str:
     from PIL import Image, ImageFile
     ImageFile.LOAD_TRUNCATED_IMAGES = True   # aproveita até onde a imagem foi gravada
-    with Image.open(origem) as img:
-        img.load()
-        formato = img.format or "PNG"
-        if formato == "JPEG" and img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        img.save(destino, format=formato)
+    try:
+        with Image.open(origem) as img:
+            img.load()
+            formato = img.format or "PNG"
+            if formato == "JPEG" and img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            img.save(destino, format=formato)
+    finally:
+        ImageFile.LOAD_TRUNCATED_IMAGES = False
     return f"imagem recuperada ({formato})"
 
 
@@ -228,6 +231,64 @@ def _consertar(origem: Path, destino: Path, ext: str) -> str:
     if ext in (".rar", ".001"):
         return _reparar_rar(origem, destino)
     raise RuntimeError(f"ainda não sei reparar {ext}")
+
+
+# ------------------------------------------------------------------ garimpo: arquivo misturado com lixo
+MARCAS = ((b"\xff\xd8\xff", ".jpg"), (b"\x89PNG\r\n\x1a\n", ".png"), (b"%PDF-", ".pdf"))
+MAX_TENTATIVAS = 60
+
+
+def garimpar(origem: Path, destino_base: Path) -> str | None:
+    """Procura uma foto/PDF INTEIRO escondido no meio do arquivo (programas de recuperação às vezes
+    grudam o conteúdo verdadeiro em lixo). Salva o melhor achado (bytes originais, sem perda) e
+    devolve a descrição, ou None se não houver nada aproveitável."""
+    import io
+    from PIL import Image, ImageFile
+    ImageFile.LOAD_TRUNCATED_IMAGES = False   # aqui só vale imagem INTEIRA
+    dados = origem.read_bytes()
+    melhor: tuple[int, int, str, str] | None = None   # (pixels, posição, extensão, descrição)
+    for marca, ext in MARCAS:
+        posicao, tentativas = dados.find(marca), 0
+        while posicao != -1 and tentativas < MAX_TENTATIVAS:
+            tentativas += 1
+            try:
+                if ext == ".pdf":
+                    import pikepdf
+                    with pikepdf.open(io.BytesIO(dados[posicao:])) as pdf:
+                        if len(pdf.pages):
+                            candidato = (10 ** 9, posicao, ext, f"PDF de {len(pdf.pages)} página(s)")
+                            melhor = max(melhor or candidato, candidato)
+                            break
+                else:
+                    with Image.open(io.BytesIO(dados[posicao:])) as img:
+                        img.load()                      # decodifica a imagem INTEIRA: nada de meia foto
+                        largura, altura = img.size
+                    if largura >= 64 and altura >= 64:
+                        tipo = "foto" if largura >= 400 else "miniatura"
+                        candidato = (largura * altura, posicao, ext, f"{tipo} {largura}×{altura}")
+                        melhor = max(melhor or candidato, candidato)
+            except Exception:  # noqa: BLE001 — marca falsa no meio do lixo: segue procurando
+                pass
+            posicao = dados.find(marca, posicao + 1)
+    if not melhor:
+        return None
+    _, posicao, ext, descricao = melhor
+    fim = len(dados)
+    if ext == ".jpg":   # corta o lixo depois da foto: primeiro fim de imagem (FFD9) que decodifica inteiro
+        corte, tentativas = dados.find(b"\xff\xd9", posicao), 0
+        while corte != -1 and tentativas < 300:
+            tentativas += 1
+            try:
+                with Image.open(io.BytesIO(dados[posicao:corte + 2])) as img:
+                    img.load()
+                fim = corte + 2
+                break
+            except Exception:  # noqa: BLE001
+                corte = dados.find(b"\xff\xd9", corte + 2)
+    destino = destino_base.with_name(destino_base.stem + "_recuperada" + ext)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(dados[posicao:fim])
+    return f"{descricao} encontrada dentro do arquivo → {destino}"
 
 
 # ------------------------------------------------------------------ cópia sã em outro lugar
@@ -295,6 +356,19 @@ def reparar_um(con, caminho: str, raiz: Path) -> tuple[str, str, str | None, str
                                                       "costumam usar parte do CPF como senha.")
                 else:
                     situacao, detalhe = "nao_reparado", str(erro)[:300]
+    if situacao in ("perdido", "nao_reparado") and Path(caminho).exists() and Path(caminho).stat().st_size > 0:
+        try:   # última chance: garimpar conteúdo inteiro escondido no meio do arquivo
+            origem = Path(caminho)
+            try:
+                relativo = origem.relative_to(raiz)
+            except ValueError:
+                relativo = Path(origem.name)
+            achado = garimpar(origem, raiz / PASTA_REPARADOS / relativo)
+            if achado:
+                situacao, detalhe = "reparado", achado
+                destino = achado.rsplit("→ ", 1)[-1]
+        except Exception:  # noqa: BLE001
+            pass
     sa = copia_sa(con, caminho) if situacao in ("perdido", "incompleto", "nao_reparado") else None
     return situacao, detalhe, destino, sa
 
@@ -348,3 +422,47 @@ def relatorio(raiz: str | None = None, exemplos: int = 5) -> str:
         linhas.append(f"\n💚 {salvos:,} arquivos perdidos/incompletos TÊM uma cópia sã em outro lugar")
     con.close()
     return "\n".join(linhas)
+
+
+PASTA_PARA_APAGAR = "PARA APAGAR - REVISAR"
+
+
+def separar_perdidos(pasta: str | Path, log=print) -> dict:
+    """Para cada arquivo PERDIDO dentro de `pasta`: garimpa de novo (salvando o que houver em
+    REPARADOS PELA CENTRAL) e SÓ ENTÃO move o original inútil para 'PARA APAGAR - REVISAR' no
+    mesmo disco. Nada é apagado; dá para desfazer com: curador desfazer."""
+    import json
+    from .curador import REGISTRO_MOVIMENTOS, _livre
+    pasta = _raiz(pasta)
+    raiz = Path(pasta.anchor)
+    con = _tabela()
+    fila = [c for (c,) in con.execute("SELECT caminho FROM reparos WHERE situacao = 'perdido' AND caminho LIKE ?",
+                                       (str(pasta).rstrip("\\/") + "\\%",)).fetchall()]
+    log(f"⛏ {len(fila):,} arquivos perdidos: garimpando cada um antes de separar…")
+    lote = "perdidos-" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    contagem = {"recuperados": 0, "separados": 0}
+    for n, caminho in enumerate(fila, 1):
+        origem = Path(caminho)
+        if not origem.exists():
+            continue
+        situacao, detalhe, destino, sa = reparar_um(con, caminho, raiz)
+        if situacao not in ("perdido", "reparado"):
+            continue   # o diagnóstico mudou: não mexe
+        if situacao == "reparado":
+            contagem["recuperados"] += 1
+        alvo = _livre(raiz / PASTA_PARA_APAGAR / origem.relative_to(raiz))
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(origem), str(alvo))
+        with open(REGISTRO_MOVIMENTOS, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"lote": lote, "de": str(origem), "para": str(alvo)}, ensure_ascii=False) + "\n")
+        con.execute("INSERT OR REPLACE INTO reparos VALUES (?, ?, ?, ?, ?, ?)",
+                    (caminho, situacao, f"{detalhe} · original movido para {alvo}", destino, sa,
+                     datetime.now().isoformat(timespec="minutes")))
+        con.commit()
+        contagem["separados"] += 1
+        if n % 500 == 0:
+            log(f"   {n:,}/{len(fila):,} · {contagem['recuperados']:,} com conteúdo recuperado")
+    con.close()
+    log(f"✅ {contagem['separados']:,} originais ilegíveis em {raiz / PASTA_PARA_APAGAR} (lote {lote}); "
+        f"{contagem['recuperados']:,} tiveram foto/PDF recuperado em {raiz / PASTA_REPARADOS}")
+    return contagem

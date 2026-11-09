@@ -157,3 +157,68 @@ def separar(raiz: str | Path, quantidade: int = 100, log=print) -> int:
     con.close()
     log(f"✅ {movidos} cópias separadas em {quarentena} (lote {lote_id}). Para desfazer: curador desfazer")
     return movidos
+
+
+# ------------------------------------------------------------------ verificação final e exclusão segura
+def _onde_ficou() -> dict[str, str]:
+    """caminho antigo da cópia → onde ela está agora (pelo registro de movimentos)."""
+    mapa = {}
+    if REGISTRO_MOVIMENTOS.exists():
+        for linha in REGISTRO_MOVIMENTOS.read_text(encoding="utf-8").splitlines():
+            if linha.strip():
+                r = json.loads(linha)
+                mapa[r["de"]] = r["para"]
+    return mapa
+
+
+def _conferir_um(con, copia_antiga: str, grupo: str, mapa: dict) -> tuple[str, str, str | None]:
+    """Relê a cópia e o original INTEIROS. Devolve (resultado, explicação, caminho atual da cópia)."""
+    copia = mapa.get(copia_antiga)
+    if not copia or not Path(copia).exists():
+        return "copia_sumiu", "a cópia não está mais na pasta de revisão", copia
+    originais = [c for (c,) in con.execute(
+        "SELECT caminho FROM duplicados WHERE grupo = ? AND manter = 1", (grupo,)).fetchall()]
+    if not originais or not Path(originais[0]).exists():
+        return "sem_original", "o ORIGINAL não existe mais — a cópia é a única: NÃO apagar", copia
+    if _completo(copia) != grupo:
+        return "divergente", "a cópia mudou desde a detecção — NÃO apagar", copia
+    if _completo(originais[0]) != grupo:
+        return "divergente", "o original mudou desde a detecção — NÃO apagar a cópia", copia
+    return "identico", f"idêntico byte a byte ao original {originais[0]}", copia
+
+
+def conferir(raiz: str | Path, apagar: bool = False, log=print) -> dict:
+    """Relê cada cópia separada E o seu original, inteiros (SHA-256). Com apagar=True, exclui a cópia
+    SOMENTE se os dois forem idênticos naquele instante; qualquer dúvida = a cópia fica."""
+    raiz = _raiz(raiz)
+    prefixo = str(raiz).rstrip("\\/") + "\\%"
+    con, mapa = _tabela(), _onde_ficou()
+    con.execute("""CREATE TABLE IF NOT EXISTS conferencia (caminho TEXT PRIMARY KEY, copia TEXT,
+                   resultado TEXT, detalhe TEXT, quando TEXT)""")
+    fila = con.execute("""SELECT caminho, grupo, tamanho FROM duplicados WHERE status = 'separado'
+                          AND manter = 0 AND caminho LIKE ? ORDER BY tamanho DESC""", (prefixo,)).fetchall()
+    log(f"🔍 Conferindo {len(fila):,} cópias, relendo cada uma e o seu original por inteiro…")
+    contagem: dict[str, int] = {}
+    liberado = 0
+    for n, (caminho, grupo, tamanho) in enumerate(fila, 1):
+        try:
+            resultado, detalhe, copia = _conferir_um(con, caminho, grupo, mapa)
+        except OSError as erro:
+            resultado, detalhe, copia = "erro_leitura", f"não consegui ler: {erro}", mapa.get(caminho)
+        if apagar and resultado == "identico":
+            Path(copia).unlink()
+            resultado, liberado = "apagado", liberado + tamanho
+            con.execute("UPDATE duplicados SET status = 'apagado' WHERE caminho = ?", (caminho,))
+        con.execute("INSERT OR REPLACE INTO conferencia VALUES (?, ?, ?, ?, ?)",
+                    (caminho, copia, resultado, detalhe, datetime.now().isoformat(timespec="minutes")))
+        con.commit()
+        contagem[resultado] = contagem.get(resultado, 0) + 1
+        if n % 250 == 0:
+            log(f"   {n:,}/{len(fila):,} · " + " · ".join(f"{k}: {v:,}" for k, v in contagem.items()))
+    con.close()
+    nomes = {"identico": "✅ idênticas (seguras para apagar)", "apagado": "🗑 apagadas após conferência",
+             "divergente": "⚠ diferentes — mantidas", "sem_original": "⚠ original sumiu — mantidas",
+             "copia_sumiu": "🔍 cópia não encontrada", "erro_leitura": "⚠ erro de leitura — mantidas"}
+    log("Resultado: " + " · ".join(f"{nomes.get(k, k)}: {v:,}" for k, v in contagem.items())
+        + (f" · {liberado / 1e9:.1f} GB liberados" if apagar else ""))
+    return contagem

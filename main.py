@@ -132,11 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     c_drv.add_argument("--minutos", type=float, default=None)
     c_drv.add_argument("--limite", type=int, default=None)
     c_dup = sub.add_parser("duplicados", help="encontra cópias idênticas e as separa (com seu consentimento)")
-    c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar"])
+    c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar", "conferir", "apagar"])
     c_dup.add_argument("alvo", nargs="*", default=[], help="discos/pastas (padrão: todos os catalogados)")
     c_dup.add_argument("--quantidade", type=int, default=100)
     c_rep = sub.add_parser("reparar", help="Agente Reparador: recupera arquivos danificados (sempre numa cópia)")
-    c_rep.add_argument("acao", choices=["executar", "relatorio"])
+    c_rep.add_argument("acao", choices=["executar", "relatorio", "separar-perdidos"])
     c_rep.add_argument("alvo", nargs="?", default="")
     c_rep.add_argument("--limite", type=int, default=None)
     sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
@@ -184,6 +184,14 @@ def main(argv: list[str] | None = None) -> int:
                 print('Informe o disco, ex.: reparar executar "E:\\"')
                 return 1
             reparador.reparar(a.alvo, a.limite)
+        elif a.acao == "separar-perdidos":
+            texto = (f"⛏ Garimpar e depois mover os arquivos ILEGÍVEIS de {a.alvo} para "
+                     f"'{reparador.PASTA_PARA_APAGAR}' (nada é apagado; dá para desfazer)?")
+            if not a.alvo or not (a.sim or (telegram.pedir_aprovacao(texto) if telegram.configurado() else
+                                            input(texto + " [s/N] ").strip().lower() in ("s", "sim"))):
+                print("Nada foi movido.")
+                return 0
+            reparador.separar_perdidos(a.alvo)
         print(reparador.relatorio(a.alvo or None))
         return 0
 
@@ -232,6 +240,18 @@ def main(argv: list[str] | None = None) -> int:
             duplicados.encontrar(a.alvo or None)
         elif a.acao == "relatorio":
             print(duplicados.relatorio())
+        elif a.acao in ("conferir", "apagar"):
+            if len(a.alvo) != 1:
+                print('Informe UM disco, ex.: duplicados conferir "E:\\"')
+                return 1
+            if a.acao == "apagar":
+                texto = (f"🗑 APAGAR as cópias de '{duplicados.PASTA_QUARENTENA}' em {a.alvo[0]}? Cada cópia e o seu "
+                         "original serão relidos por inteiro antes; só sai o que for idêntico byte a byte.")
+                if not (a.sim or (telegram.pedir_aprovacao(texto) if telegram.configurado() else
+                                  input(texto + " [s/N] ").strip().lower() in ("s", "sim"))):
+                    print("Nada foi apagado.")
+                    return 0
+            duplicados.conferir(a.alvo[0], apagar=a.acao == "apagar")
         elif a.acao == "separar":
             if len(a.alvo) != 1:
                 print('Informe UM disco, ex.: duplicados separar "E:\\"')

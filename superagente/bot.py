@@ -186,7 +186,9 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
         telegram.enviar(("📋 RELATÓRIO DO EXECUTOR\n\n" if i == 0 else "") + relatorio[i:i + 3900])
 
 
-JANELA_PENDENTES = 24 * 3600   # o Telegram guarda mensagens não lidas por 24 h
+# Ordens com até 72 h são atendidas. ATENÇÃO: o próprio Telegram só guarda mensagens de bot por 24 h;
+# para valer 72 h de verdade, o bot precisa de uma "caixa postal" sempre ligada (servidor na nuvem).
+JANELA_PENDENTES = int(os.getenv("JANELA_PENDENTES_HORAS", "72")) * 3600
 
 
 def _pendentes_ao_ligar(meu_chat: str) -> int:

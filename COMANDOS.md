@@ -56,7 +56,8 @@ mantém a leitura do acervo andando, religa o que cair e avisa você no Telegram
 Não precisa abrir nada: é só mandar mensagem para o bot.
 
 ### 📬 Ordens com o PC desligado
-O Telegram guarda suas mensagens por **24 horas**. Quando o PC liga, o bot avisa
+O bot atende ordens de até **72 horas** — mas o Telegram, sozinho, só guarda mensagens por **24 h**.
+Para valer as 72 h com o PC desligado, é preciso a caixa postal na nuvem (servidor sempre ligado). Quando o PC liga, o bot avisa
 "📬 Enquanto o PC estava desligado você mandou N ordens" e atende todas, na ordem
 (as que mexem no PC continuam pedindo o seu ✅).
 
