@@ -253,10 +253,12 @@ class Superagente:
         telegram.enviar_arquivo(completo, "Resultado completo")
         return pasta
 
-    def executar(self, objetivo: str) -> Path:
-        """Modo superagente: decide sozinho quais especialistas usar."""
+    def executar(self, objetivo: str, historico: str = "") -> Path:
+        """Modo superagente: decide sozinho quais especialistas usar.
+        `historico`: memória da conversa (para entender "isso", "o item 3"…)."""
         self.log(f"🧠 Superagente planejando: {objetivo}")
-        return self._rodar_plano(objetivo, objetivo, self.planejar(objetivo))
+        pedido = f"{historico}\n\n## Pedido atual\n{objetivo}" if historico else objetivo
+        return self._rodar_plano(objetivo, pedido, self.planejar(pedido))
 
     def fluxo(self, nome: str, entrada: str) -> Path:
         """Modo fluxo fixo: segue fluxos/<nome>.toml."""

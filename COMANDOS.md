@@ -5,6 +5,17 @@ Regra de ouro: **nada é publicado, movido ou apagado sem o seu ✅.**
 
 ## No Telegram (uso diário)
 
+### 💬 Conversar (como no ChatGPT, mas com o seu acervo)
+| O que mandar | O que acontece |
+|---|---|
+| Texto, **áudio** 🎙, **foto** 🖼 ou **documento** 📄 | Áudio é transcrito no PC (segundos); foto é lida pelo Gemini; documento tem o conteúdo extraído |
+| Pergunta / conversa | Resposta direta em ~10–15 s, pelo especialista certo (escolhido pela IA em ~1 s), com o seu acervo |
+| "aprofunde o item 3", "e sobre isso?" | Funciona: a Central **lembra a conversa** (conversa nova após 12 h parada) |
+| `/tarefa <pedido>` | Força a equipe completa (plano + seu ✅) — pedidos como "escreva um artigo…" já vão para a equipe sozinhos |
+| `/nova` | Começa uma conversa nova (a anterior fica arquivada em `~/.central-ia/conversas`) |
+| `/lembrar <fato>` | Algo que **todos os agentes** devem saber sempre (ex.: seu público, seu estilo) |
+| `/memoria` · `/esquecer <nº>` | Ver e apagar o que está guardado |
+
 ### 🖐 Executar no seu PC (de qualquer lugar)
 | Comando | O que faz |
 |---|---|

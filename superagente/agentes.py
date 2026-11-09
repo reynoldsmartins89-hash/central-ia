@@ -50,16 +50,18 @@ class Agente:
         return lista
 
     def executar(self, tarefa: str, contexto: str = "", modelos: list[str] | None = None,
-                 log=print) -> tuple[str, str]:
-        """Executa a tarefa. Retorna (modelo_usado, resposta)."""
+                 log=print, consulta: str | None = None) -> tuple[str, str]:
+        """Executa a tarefa. Retorna (modelo_usado, resposta).
+        `consulta`: texto usado para buscar na biblioteca/acervo (padrão: a própria tarefa)."""
+        busca = consulta or tarefa
         hab = habilidades.carregar(self.habilidade)
         sistema = f"{hab.como_prompt()}\n\n---\n{REGRAS_GERAIS}"
         mensagem = f"## Tarefa\n{tarefa}"
         if self.base:
             from . import conhecimento, leitor
-            trechos = conhecimento.buscar(self.nome, tarefa)
+            trechos = conhecimento.buscar(self.nome, busca)
             # material que não é texto (áudio, vídeo, imagem, compactados) vem das fichas do Agente Leitor
-            trechos += leitor.buscar(tarefa, limite=max(2, 8 - len(trechos)), prefixo=self.base)
+            trechos += leitor.buscar(busca, limite=max(2, 8 - len(trechos)), prefixo=self.base)
             if trechos:
                 log(f"   📚 {len(trechos)} trechos da biblioteca de {self.nome}")
                 mensagem = f"{conhecimento.como_contexto(trechos)}\n\n{mensagem}"
@@ -69,7 +71,7 @@ class Agente:
                 sistema += "\nNenhum trecho da biblioteca foi encontrado para esta tarefa: avise isso no início da resposta."
         if self.acervo:
             from . import conhecimento, leitor
-            achados = leitor.buscar(tarefa)
+            achados = leitor.buscar(busca)
             if achados:
                 log(f"   🗃 {len(achados)} materiais do seu acervo (Drive/HDs) relacionados")
                 mensagem = (conhecimento.como_contexto(achados).replace(

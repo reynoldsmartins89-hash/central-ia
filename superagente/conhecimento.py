@@ -34,7 +34,12 @@ def _caminho_indice(agente: str) -> Path:
 
 
 def _conectar(agente: str) -> sqlite3.Connection:
-    con = sqlite3.connect(_caminho_indice(agente))
+    # timeout + WAL: a indexação (que escreve) não pode travar as consultas do bot (que só leem)
+    con = sqlite3.connect(_caminho_indice(agente), timeout=60)
+    try:
+        con.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass   # índice ocupado agora; vale da próxima vez
     con.executescript("""
         CREATE TABLE IF NOT EXISTS arquivos (caminho TEXT PRIMARY KEY, modificado REAL);
         CREATE VIRTUAL TABLE IF NOT EXISTS trechos USING fts5(

@@ -12,11 +12,20 @@ import os
 import time
 import traceback
 
-from . import provedores, telegram
+from . import memoria, provedores, telegram
 from .agentes import carregar_equipe
 from .orquestrador import PASTA_FLUXOS, PlanoCancelado, Superagente, formatar_plano
 
 COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
+
+💬 CONVERSAR (como no ChatGPT, mas com o SEU acervo)
+• Escreva, mande ÁUDIO 🎙, FOTO 🖼 ou DOCUMENTO 📄 — a Central entende os quatro
+• Ela LEMBRA a conversa: "aprofunde o item 3", "e sobre isso?" funcionam
+• Perguntas e conversa → resposta rápida pelo especialista certo (com o seu acervo)
+• /tarefa <pedido> — força a EQUIPE completa (plano + seu ✅), para trabalhos grandes
+• /nova — começa uma conversa nova (a anterior fica arquivada)
+• /lembrar <fato> — algo que TODOS os agentes devem saber sempre sobre você
+• /memoria — o que está guardado · /esquecer <nº> — apaga um fato
 
 🖐 EXECUTAR NO SEU PC (de qualquer lugar)
 • /pc <ordem> — o Agente Executor faz de verdade: arquivos, pastas, programas,
@@ -26,7 +35,8 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 • Ordens em texto livre ("organize…", "repare…", "mova…") também vão para o Executor
 
 ✍️ PEDIR TRABALHO
-• (texto livre) — o superagente monta a equipe e executa, após sua aprovação
+• Pedidos de produção ("escreva um artigo…", "monte um estudo completo…") — o superagente
+   monta a equipe e executa, após sua aprovação
    ex.: Analise o impacto da IA no agronegócio brasileiro para um artigo
 • /conteudo <tema> — pacote editorial completo: dossiê, artigo-mãe, revisão,
    redes sociais, imagens, carrossel e roteiro de YouTube
@@ -128,10 +138,26 @@ def tratar(texto: str) -> None:
         if not resto:
             telegram.enviar("Use: /rapido sua pergunta")
             return
-        _, equipe = carregar_equipe()
-        telegram.enviar("⚡ Pensando…")
-        modelo, resposta = equipe["generalista"].executar(resto, log=lambda *_: None)
-        telegram.enviar(f"[{modelo}]\n\n{resposta}")
+        conversar(resto, especialista=False)
+        return
+    if comando == "/nova":
+        n = memoria.nova()
+        telegram.enviar(f"🆕 Conversa nova! ({n} mensagens anteriores arquivadas.) "
+                        "O que você sempre pediu para eu lembrar continua valendo (/memoria).")
+        return
+    if comando == "/lembrar":
+        if not resto:
+            telegram.enviar("Use: /lembrar <fato> — ex.: /lembrar Escrevo para empresários do agronegócio")
+            return
+        n = memoria.lembrar(resto)
+        telegram.enviar(f"📌 Guardado (nº {n}). Todos os agentes vão levar isso em conta, sempre.")
+        return
+    if comando == "/memoria":
+        telegram.enviar(memoria.resumo())
+        return
+    if comando == "/esquecer":
+        removido = memoria.esquecer(int(resto)) if resto.isdigit() else None
+        telegram.enviar(f"🗑 Esqueci: {removido}" if removido else "Use: /esquecer <número> (veja em /memoria)")
         return
 
     if comando in ("/pc", "/executar", "/continuar"):
@@ -140,13 +166,24 @@ def tratar(texto: str) -> None:
             return
         _executar_no_pc(resto, continuar=comando == "/continuar")
         return
-    if not comando.startswith("/"):
-        from . import executor
-        if executor.disponivel() and executor.classificar(texto) == "acao":
-            _executar_no_pc(texto)
-            return
 
     sa = Superagente(aprovar=_aprovar_se_preciso, ao_vivo=True, log=print)
+    if comando == "/tarefa":
+        if not resto:
+            telegram.enviar("Use: /tarefa <pedido> — a equipe completa trabalha nele")
+            return
+        _tarefa_em_equipe(sa, resto)
+        return
+    if not comando.startswith("/"):
+        from . import executor
+        modo = modo_da_mensagem(texto)
+        if modo == "acao" and executor.disponivel() and executor.classificar(texto) == "acao":
+            _executar_no_pc(texto)
+        elif modo == "tarefa":
+            _tarefa_em_equipe(sa, texto)
+        else:
+            conversar(texto)
+        return
     if comando == "/conteudo":
         if not resto:
             telegram.enviar("Use: /conteudo tema do artigo")
@@ -161,8 +198,88 @@ def tratar(texto: str) -> None:
         sa.fluxo(comando[1:], resto)
         return
 
+    _tarefa_em_equipe(sa, texto)
+
+
+# ------------------------------------------------------------------ modos: conversa, tarefa, ação
+PEDIDOS_DE_PRODUCAO = ("artigo", "post", "posts", "carrossel", "roteiro", "dossiê", "dossie", "relatório",
+                       "relatorio", "estudo completo", "pesquisa completa", "e-book", "ebook", "newsletter",
+                       "plano de ação", "plano de negócio", "plano de estudos", "apresentação", "campanha",
+                       "produza", "elabore", "redija", "monte um", "monte uma", "desenvolva um", "desenvolva uma",
+                       "escreva um", "escreva uma", "crie um", "crie uma")
+
+
+def modo_da_mensagem(texto: str) -> str:
+    """'acao' (mexer no PC), 'tarefa' (produção em equipe) ou 'conversa' (resposta rápida)."""
+    from . import executor
+    t = f" {texto.lower()} "
+    if executor.parece_acao(texto) and not any(p in t for p in PEDIDOS_DE_PRODUCAO):
+        return "acao"
+    if any(p in t for p in PEDIDOS_DE_PRODUCAO):
+        return "tarefa"
+    return "conversa"
+
+
+def _escolher_especialista(texto: str):
+    """A IA rápida lê o que cada especialista faz e escolhe UM (ou o generalista). ~1 s."""
+    _, equipe = carregar_equipe()
+    candidatos = {n: a for n, a in equipe.items() if a.base or n in ("generalista", "orientador_linkedin",
+                                                                       "orientador_github", "poliglota")}
+    lista = "\n".join(f"- {n}: {a.descricao}" for n, a in candidatos.items())
+    try:
+        _, escolha = provedores.chamar_com_reserva(
+            ["groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest"],
+            "Você distribui perguntas entre especialistas. Responda SOMENTE com o nome exato de UM agente da "
+            "lista. Escolha um especialista só se o assunto for claramente da área dele; na dúvida, 'generalista'.",
+            f"Agentes:\n{lista}\n\nMensagem do usuário:\n{texto[-1500:]}", log=lambda *_: None)
+        nome = escolha.strip().strip("`*'\". ").split()[0].lower() if escolha.strip() else ""
+        return candidatos.get(nome, equipe["generalista"])
+    except Exception:  # noqa: BLE001
+        return equipe["generalista"]
+
+
+def _digitando() -> None:
+    try:
+        telegram._api("sendChatAction", {"chat_id": os.getenv("TELEGRAM_CHAT_ID", "").strip(), "action": "typing"})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _enviar_longo(texto: str) -> None:
+    for i in range(0, len(texto), 3800):
+        telegram.enviar(texto[i:i + 3800])
+
+
+def conversar(texto: str, especialista: bool = True) -> str:
+    """Modo conversa: resposta direta e rápida, com memória e com o acervo do especialista certo."""
+    _digitando()
+    anterior = memoria.ultima_fala_sua()
+    agente = _escolher_especialista(f"{anterior} {texto}") if especialista else carregar_equipe()[1]["generalista"]
+    contexto = memoria.contexto()
+    tarefa = (f"{contexto}\n\n## Mensagem atual do usuário\n{texto}\n\n"
+              "Responda à MENSAGEM ATUAL em tom de conversa, direto ao ponto (como num chat), usando a "
+              "conversa acima para entender referências. Seja completo mas enxuto; se o assunto pedir um "
+              "trabalho grande (artigo, estudo completo), responda o essencial e sugira usar /tarefa.")
+    memoria.adicionar("voce", texto)
+    modelo, resposta = agente.executar(tarefa, log=lambda *_: None, consulta=f"{anterior} {texto}")
+    memoria.adicionar("central", resposta)
+    rotulo = "" if agente.nome == "generalista" else f"📚 {agente.nome} · "
+    _enviar_longo(f"{rotulo}{modelo.split(':')[0]}\n\n{resposta}")
+    return resposta
+
+
+def _tarefa_em_equipe(sa: Superagente, texto: str) -> None:
     telegram.enviar("🧠 Recebido! O superagente está montando o plano…")
-    sa.executar(texto)
+    contexto = memoria.contexto()
+    memoria.adicionar("voce", texto)
+    pasta = sa.executar(texto, historico=contexto)
+    try:   # guarda o resultado final na memória, para você poder continuar a conversa sobre ele
+        import json
+        registro = json.loads((pasta / "registro.json").read_text(encoding="utf-8"))
+        final = (pasta / registro["etapas"][-1]["arquivo"]).read_text(encoding="utf-8")
+        memoria.adicionar("central", f"[Resultado da equipe — completo em {pasta}]\n{final}")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
@@ -172,9 +289,13 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
         telegram.enviar("⚠️ O Agente Executor precisa do Claude Code instalado e logado neste PC.")
         return
     telegram.enviar("🖐 Agente Executor: entendendo a ordem e conferindo o PC (só lendo, nada muda ainda)…")
-    plano, sessao = executor.planejar(ordem)
+    historico = memoria.historico(4000)
+    memoria.adicionar("voce", ordem)
+    plano, sessao = executor.planejar(f"{ordem}\n\n(Conversa recente, para entender referências:\n{historico})"
+                                      if historico else ordem)
     if executor.sem_acao(plano):
-        telegram.enviar(plano[:3900])
+        memoria.adicionar("central", plano)
+        _enviar_longo(plano)
         return
     if not telegram.pedir_aprovacao(f"🖐 PLANO DO EXECUTOR\n\n{plano}"[:3800]):
         telegram.enviar("❌ Cancelado. Nada foi alterado no seu PC.")
@@ -182,13 +303,17 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
     telegram.enviar("▶️ Executando… vou mandando o andamento.")
     relatorio = executor.executar(ordem, plano, sessao=executor.ultima_sessao() if continuar else sessao,
                                   progresso=telegram.enviar)
-    for i in range(0, len(relatorio), 3900):
-        telegram.enviar(("📋 RELATÓRIO DO EXECUTOR\n\n" if i == 0 else "") + relatorio[i:i + 3900])
+    memoria.adicionar("central", f"[Relatório do Executor]\n{relatorio}")
+    _enviar_longo(f"📋 RELATÓRIO DO EXECUTOR\n\n{relatorio}")
 
 
 # Ordens com até 72 h são atendidas. ATENÇÃO: o próprio Telegram só guarda mensagens de bot por 24 h;
 # para valer 72 h de verdade, o bot precisa de uma "caixa postal" sempre ligada (servidor na nuvem).
 JANELA_PENDENTES = int(os.getenv("JANELA_PENDENTES_HORAS", "72")) * 3600
+
+
+def _tem_conteudo(msg: dict) -> bool:
+    return bool((msg.get("text") or "").strip() or any(msg.get(k) for k in ("voice", "audio", "photo", "document")))
 
 
 def _pendentes_ao_ligar(meu_chat: str) -> int:
@@ -199,12 +324,12 @@ def _pendentes_ao_ligar(meu_chat: str) -> int:
         atualizacoes = []
     agora = time.time()
     pendentes = [u for u in atualizacoes if str((u.get("message") or {}).get("chat", {}).get("id")) == meu_chat
-                 and (u["message"].get("text") or "").strip()
-                 and agora - u["message"].get("date", 0) <= JANELA_PENDENTES]
+                 and _tem_conteudo(u["message"]) and agora - u["message"].get("date", 0) <= JANELA_PENDENTES]
     if not pendentes:
         telegram.enviar("🟢 Central de IA online. Mande sua tarefa! (/ajuda para exemplos)")
         return max((u["update_id"] for u in atualizacoes), default=0) + 1
-    lista = "\n".join(f"{i}. {u['message']['text'][:120]}" for i, u in enumerate(pendentes, 1))
+    lista = "\n".join(f"{i}. {(u['message'].get('text') or u['message'].get('caption') or '[áudio/foto/documento]')[:120]}"
+                      for i, u in enumerate(pendentes, 1))
     telegram.enviar(f"🟢 Central de IA online.\n📬 Enquanto o PC estava desligado você mandou "
                     f"{len(pendentes)} ordem(ns). Vou atender agora, na ordem:\n{lista}")
     return pendentes[0]["update_id"]
@@ -233,17 +358,30 @@ def rodar() -> None:
         for u in r.get("result", []):
             deslocamento = u["update_id"] + 1
             msg = u.get("message") or {}
-            if str(msg.get("chat", {}).get("id")) != meu_chat or not msg.get("text"):
-                continue  # ignora outras pessoas e mensagens sem texto
+            if str(msg.get("chat", {}).get("id")) != meu_chat or not _tem_conteudo(msg):
+                continue  # ignora outras pessoas e mensagens vazias (figurinhas etc.)
             if time.time() - msg.get("date", time.time()) > JANELA_PENDENTES:
                 continue  # velha demais: o Telegram já teria descartado
-            print(f"\n📩 {msg['text']}")
+            print(f"\n📩 {msg.get('text') or msg.get('caption') or '[áudio/foto/documento]'}")
             try:  # confirma ANTES de atender: se algo travar, a mesma ordem não se repete em loop
                 telegram._api("getUpdates", {"offset": deslocamento, "timeout": 0, "limit": 1})
             except Exception:  # noqa: BLE001
                 pass
             try:
-                tratar(msg["text"].strip())
+                from . import midia
+                texto = midia.entrada(msg, avisar=telegram.enviar)
+                if not texto:
+                    continue
+                if msg.get("photo") or msg.get("document"):
+                    # foto/documento: quem decide o que fazer é a SUA legenda, não o conteúdo do arquivo
+                    if msg.get("caption") and modo_da_mensagem(msg["caption"]) == "tarefa":
+                        _tarefa_em_equipe(Superagente(aprovar=_aprovar_se_preciso, ao_vivo=True, log=print), texto)
+                    elif msg.get("caption") and modo_da_mensagem(msg["caption"]) == "acao":
+                        _executar_no_pc(texto)
+                    else:
+                        conversar(texto)
+                    continue
+                tratar(texto)
             except PlanoCancelado:
                 pass
             except Exception as erro:  # noqa: BLE001 — o bot nunca deve cair
