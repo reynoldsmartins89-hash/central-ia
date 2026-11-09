@@ -91,11 +91,15 @@ def _candidatos_bibliotecas(termos: list[str], ignorar: set[str]) -> dict[str, d
         con = sqlite3.connect(banco, timeout=60)
         achados = {c for (c,) in con.execute("SELECT DISTINCT caminho FROM trechos WHERE trechos MATCH ?",
                                              (" OR ".join(termos),))}
-        for caminho in achados:
-            partes = con.execute("SELECT titulo, texto FROM trechos WHERE caminho = ? ORDER BY rowid",
-                                 (caminho,)).fetchall()
-            saida[caminho] = {"titulo": partes[0][0] or Path(caminho).stem, "fonte": f"drive:{nome}",
-                              "texto": "\n\n".join(t for _, t in partes)}
+        textos: dict[str, list[str]] = {}
+        titulos: dict[str, str] = {}
+        for caminho, titulo, texto in con.execute("SELECT caminho, titulo, texto FROM trechos"):   # UMA varredura
+            if caminho in achados:
+                textos.setdefault(caminho, []).append(texto)
+                titulos.setdefault(caminho, titulo)
+        for caminho, partes in textos.items():
+            saida[caminho] = {"titulo": titulos[caminho] or Path(caminho).stem, "fonte": f"drive:{nome}",
+                              "texto": "\n\n".join(partes)}
         con.close()
     return saida
 
