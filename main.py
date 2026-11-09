@@ -17,7 +17,7 @@ import sys
 
 from superagente import habilidades, provedores, telegram
 from superagente.agentes import RAIZ, carregar_env, carregar_equipe
-from superagente.orquestrador import PASTA_FLUXOS, PASTA_RESULTADOS, PlanoCancelado, Superagente
+from superagente.orquestrador import PASTA_FLUXOS, PASTA_RESULTADOS, PlanoCancelado, Superagente, formatar_plano
 
 for fluxo_saida in (sys.stdout, sys.stderr):
     try:
@@ -29,8 +29,7 @@ ARQUIVO_ENV = RAIZ / ".env"
 
 
 def texto_plano(plano) -> str:
-    return "📋 Plano do superagente:\n" + "\n".join(
-        f"{i}. [{p['agente']}] {p['tarefa']}" for i, p in enumerate(plano, 1))
+    return formatar_plano(plano)
 
 
 def confirmar_plano(plano) -> bool:

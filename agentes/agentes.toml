@@ -159,3 +159,31 @@ habilidade = "conhecimento/viver-de-estudo"
 base = "G:/Meu Drive/Agente_Viver_de_Estudo"
 privacidade = "nuvem"
 modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+# ============ Combinações recomendadas ============
+# O superagente usa estas equipes quando o pedido combina com o "quando".
+# Você pode criar novas: liste os agentes e descreva em que situação trabalham juntos.
+
+[combinacoes.conteudo_digital]
+agentes = ["marketing_digital", "comunicacao", "redator", "social", "revisor"]
+quando = "criar, divulgar ou vender com conteúdo: posts, campanhas, newsletter, lançamentos, copy, presença nas redes"
+
+[combinacoes.negocio_digital]
+agentes = ["viver_de_estudo", "marketing_digital", "estrategista", "gestor"]
+quando = "empreender, monetizar, abrir ou estruturar um negócio digital, MEI, anúncios, plano de ação comercial"
+
+[combinacoes.analise_internacional]
+agentes = ["geopolitica", "politica", "pesquisador", "revisor"]
+quando = "cenários internacionais, conflitos, eleições, relações entre países, análise de conjuntura"
+
+[combinacoes.fundamentacao_filosofica]
+agentes = ["cof", "filosofia_catolica", "comunicacao", "revisor"]
+quando = "temas de filosofia, ética, religião, cultura, educação ou formação da personalidade"
+
+[combinacoes.dados_e_territorio]
+agentes = ["geoprocessamento", "ciencia_de_dados", "analista", "programador"]
+quando = "mapas, dados espaciais, SIG, sensoriamento remoto, análises com Python ou estatística"
+
+[combinacoes.seguranca]
+agentes = ["seguranca_publica", "cyberseguranca", "politica", "gestor"]
+quando = "segurança pública, proteção de dados e sistemas, políticas e planos de segurança"

@@ -14,7 +14,7 @@ import traceback
 
 from . import provedores, telegram
 from .agentes import carregar_equipe
-from .orquestrador import PASTA_FLUXOS, PlanoCancelado, Superagente
+from .orquestrador import PASTA_FLUXOS, PlanoCancelado, Superagente, formatar_plano
 
 AJUDA = """🧠 Central de IA — como falar comigo
 
@@ -35,9 +35,7 @@ Planos com mais de uma etapa pedem sua aprovação aqui antes de rodar."""
 def _aprovar_se_preciso(plano) -> bool:
     if len(plano) <= 1:
         return True  # tarefa de uma etapa só: roda direto
-    texto = "📋 Plano do superagente:\n" + "\n".join(
-        f"{i}. [{p['agente']}] {p['tarefa']}" for i, p in enumerate(plano, 1))
-    return telegram.pedir_aprovacao(texto)
+    return telegram.pedir_aprovacao(formatar_plano(plano))
 
 
 def _status() -> str:

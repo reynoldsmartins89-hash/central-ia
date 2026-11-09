@@ -74,6 +74,18 @@ class TestCentral(unittest.TestCase):
             trechos = conhecimento.buscar("teste", "Explique as rotas do Ártico")
             self.assertEqual(trechos[0]["caminho"], "aula1.md")
 
+    def test_plano_mostra_o_porque(self):
+        from superagente.orquestrador import formatar_plano
+        texto = formatar_plano([{"agente": "marketing_digital", "tarefa": "x", "porque": "tem material sobre funis"}])
+        self.assertIn("↳ tem material sobre funis", texto)
+        self.assertEqual(len(texto.splitlines()), 3)
+
+    def test_combinacoes_existem(self):
+        from superagente.agentes import carregar_combinacoes
+        combos = carregar_combinacoes()
+        self.assertIn("comunicacao", combos["conteudo_digital"]["agentes"])
+        self.assertIn("marketing_digital", combos["conteudo_digital"]["agentes"])
+
     def test_superagente_sem_plano_valido_usa_generalista(self):
         sa = Superagente(forcar_modelo="eco:teste", log=lambda *_: None)
         self.assertEqual(sa.planejar("qualquer coisa")[0]["agente"], "generalista")

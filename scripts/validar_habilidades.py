@@ -43,6 +43,13 @@ for nome, ag in agentes.items():
     if not ag.get("modelos"):
         erros.append(f"agente {nome}: lista 'modelos' vazia")
 
+for nome, combo in config.get("combinacoes", {}).items():
+    for ag in combo.get("agentes", []):
+        if ag not in agentes:
+            erros.append(f"combinação {nome}: agente inexistente '{ag}'")
+    if not combo.get("quando"):
+        erros.append(f"combinação {nome}: falta 'quando'")
+
 for fluxo in (RAIZ / "fluxos").glob("*.toml"):
     with open(fluxo, "rb") as f:
         for etapa in tomllib.load(f).get("etapas", []):

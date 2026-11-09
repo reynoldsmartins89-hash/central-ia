@@ -141,6 +141,33 @@ def buscar(agente: str, pergunta: str, limite: int = 8, max_caracteres: int = 12
     return resultado
 
 
+def relevancia(agente: str, texto: str) -> int:
+    """Quantos trechos da biblioteca tratam do assunto (sinal para o superagente escolher agentes).
+
+    Conta trechos que contêm pelo menos DUAS palavras-chave do pedido (evita falsos positivos
+    de palavras soltas). Com uma única palavra-chave, basta ela.
+    """
+    if not indexado(agente):
+        return 0
+    palavras = sorted({p for p in re.findall(r"\w{4,}", texto.lower()) if p not in PALAVRAS_VAZIAS},
+                      key=len, reverse=True)[:8]
+    if not palavras:
+        return 0
+    if len(palavras) == 1:
+        consulta = f'"{palavras[0]}"'
+    else:  # pares de palavras próximas no mesmo trecho
+        pares = [f'NEAR("{a}" "{b}", 40)' for i, a in enumerate(palavras) for b in palavras[i + 1:]][:20]
+        consulta = " OR ".join(pares)
+    con = _conectar(agente)
+    try:
+        return con.execute("SELECT count(*) FROM (SELECT 1 FROM trechos WHERE trechos MATCH ? LIMIT 200)",
+                           (consulta,)).fetchone()[0]
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        con.close()
+
+
 def como_contexto(trechos: list[dict]) -> str:
     if not trechos:
         return ""

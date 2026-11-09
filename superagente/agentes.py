@@ -73,6 +73,12 @@ REGRAS_BIBLIOTECA = (
 )
 
 
+def carregar_combinacoes(arquivo: Path = ARQUIVO_AGENTES) -> dict[str, dict]:
+    """Equipes recomendadas: {nome: {"agentes": [...], "quando": "..."}}."""
+    with open(arquivo, "rb") as f:
+        return tomllib.load(f).get("combinacoes", {})
+
+
 def carregar_equipe(arquivo: Path = ARQUIVO_AGENTES) -> tuple[Agente, dict[str, Agente]]:
     """Retorna (superagente, {nome: agente})."""
     with open(arquivo, "rb") as f:
