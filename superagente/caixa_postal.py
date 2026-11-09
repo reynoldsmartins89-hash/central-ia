@@ -222,6 +222,8 @@ def sincronizar_dados(log=print) -> int:
         marca = max([banco.stat().st_mtime] + [p.stat().st_mtime for p in banco.parent.glob(banco.name + "-wal")])
         if feitos.get(str(banco)) == marca:
             continue
+        if banco.name == "catalogo.db" and time.time() - feitos.get("_catalogo_enviado_em", 0) < 20 * 3600:
+            continue   # o acervo é grande e muda o tempo todo: no máximo uma vez por dia
         relativo = banco.relative_to(PASTA).as_posix()
         log(f"☁️ enviando {relativo} ({banco.stat().st_size / 1e6:.0f} MB)…")
         with tempfile.TemporaryDirectory() as tmp:
@@ -241,6 +243,8 @@ def sincronizar_dados(log=print) -> int:
         _ssh(f"mv ~/.central-ia/{relativo}.novo ~/.central-ia/{relativo} && rm -f ~/.central-ia/{relativo}-wal "
              f"~/.central-ia/{relativo}-shm")
         feitos[str(banco)] = marca
+        if banco.name == "catalogo.db":
+            feitos["_catalogo_enviado_em"] = time.time()
         registro.write_text(json.dumps(feitos, ensure_ascii=False, indent=1), encoding="utf-8")
         enviados += 1
     log(f"☁️ servidor atualizado ({enviados} bancos enviados)")

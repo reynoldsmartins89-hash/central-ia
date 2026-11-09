@@ -48,7 +48,27 @@ def _normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", texto).strip()[:LIMITE]
 
 
+def _pdf_completo(caminho: Path) -> str:
+    """Texto do PDF inteiro, rápido (pypdfium2, motor do Chrome)."""
+    import pypdfium2
+    pdf = pypdfium2.PdfDocument(str(caminho), password="")
+    partes, total = [], 0
+    for i in range(len(pdf)):
+        texto = pdf[i].get_textpage().get_text_range()
+        partes.append(texto)
+        total += len(texto)
+        if total > LIMITE:
+            break
+    pdf.close()
+    return "\n".join(partes)
+
+
 def _pdf(caminho: Path) -> str:
+    if LIMITE > 3000:   # modo "texto inteiro"
+        try:
+            return _pdf_completo(caminho)
+        except Exception:  # noqa: BLE001 — cai no leitor antigo
+            pass
     from pypdf import PdfReader
     leitor = PdfReader(str(caminho))
     if leitor.is_encrypted:

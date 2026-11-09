@@ -122,7 +122,8 @@ def main(argv: list[str] | None = None) -> int:
     c_idx = sub.add_parser("indexar", help="indexa a biblioteca de um agente de conhecimento (ou todos)")
     c_idx.add_argument("agente", nargs="?", default="todos")
     c_ler = sub.add_parser("ler", help="Agente Leitor: transcreve/lê vídeos, áudios, imagens e documentos para .md")
-    c_ler.add_argument("alvo", nargs="?", default="", help="disco/pasta catalogado, ou 'progresso'")
+    c_ler.add_argument("alvo", nargs="?", default="",
+                       help="disco/pasta catalogado, 'progresso', ou 'completar' (relê por inteiro os PDFs lidos só no início)")
     c_ler.add_argument("--tipos", nargs="*", choices=["documento", "imagem", "audio/video"], default=None)
     c_ler.add_argument("--minutos", type=float, default=None, help="duração máxima desta rodada")
     c_ler.add_argument("--limite", type=int, default=None, help="máximo de arquivos nesta rodada")
@@ -266,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if a.comando in ("ler", "drive") and (a.comando == "drive" and a.acao == "ler" or
-                                          a.comando == "ler" and a.alvo != "progresso"):
+                                          a.comando == "ler" and a.alvo not in ("progresso", "completar")):
         from superagente.vigia import travar
         if not travar("leitura"):
             print("📚 Uma leitura já está em andamento (o Vigia cuida dela). Acompanhe com: ler progresso")
@@ -274,7 +275,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "ler":
         from superagente import leitor
-        if a.alvo != "progresso":
+        if a.alvo == "completar":
+            leitor.completar_documentos()
+        elif a.alvo != "progresso":
             leitor.processar(a.alvo or None, a.tipos, a.limite, a.minutos)
         print(leitor.progresso())
         return 0

@@ -472,3 +472,16 @@ class TestMemoriaUnida(unittest.TestCase):
         self.assertEqual([f["texto"] for f in unido["falas"]], ["pedido no PC", "pedido na nuvem"])
         self.assertEqual((unido["inicio"], unido["atualizado"]), (10, 30))
         self.assertEqual(memoria.juntar_perfis(["a"], ["a", "b"]), ["a", "b"])
+
+
+class TestAcervoCompleto(unittest.TestCase):
+    def test_texto_sem_quebras_vira_trechos_de_tamanho_bom(self):
+        import sqlite3
+        from superagente import leitor
+        con = sqlite3.connect(":memory:")
+        con.execute("CREATE VIRTUAL TABLE acervo USING fts5(texto, titulo UNINDEXED, caminho UNINDEXED, tipo UNINDEXED)")
+        leitor._indexar(con, "livro.pdf", "documento", "palavra " * 20000)   # 160 mil caracteres numa linha só
+        tamanhos = [len(t) for (t,) in con.execute("SELECT texto FROM acervo")]
+        self.assertGreater(len(tamanhos), 90)
+        self.assertLessEqual(max(tamanhos), 1900)
+        self.assertEqual(sum(t.count("palavra") for (t,) in con.execute("SELECT texto FROM acervo")), 20000)

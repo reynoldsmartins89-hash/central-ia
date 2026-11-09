@@ -222,7 +222,7 @@ def ler_completo(caminho: str, limite: int = 3_000_000) -> tuple[str, str, str]:
 def _extrair_tudo(caminho: str) -> str:
     """Para a ficha de documentos queremos o texto inteiro (o extrator lê só o início)."""
     antigo = extrator.LIMITE
-    extrator.LIMITE = 400_000
+    extrator.LIMITE = 3_000_000
     try:
         return extrator.extrair(caminho)[1]
     finally:
@@ -250,6 +250,14 @@ def _indexar(con, caminho: str, tipo: str, texto: str) -> None:
     titulo = Path(caminho).stem[:200]
     trechos, atual = [], ""
     for linha in texto.splitlines(keepends=True):
+        while len(linha) > 1800:   # texto sem quebras de linha (PDF inteiro): corta num espaço perto de 1500
+            corte = linha.rfind(" ", 1200, 1600)
+            corte = corte if corte > 0 else 1500
+            if atual.strip():
+                trechos.append(atual)
+                atual = ""
+            trechos.append(linha[:corte])
+            linha = linha[corte:].lstrip()
         atual += linha
         if len(atual) > 1500:
             trechos.append(atual)
@@ -435,3 +443,53 @@ def buscar(pergunta: str, limite: int = 6, max_caracteres: int = 9000, prefixo: 
         if len(resultado) >= limite:
             break
     return resultado
+
+
+# ------------------------------------------------------------------ releitura completa (PDFs lidos só no início)
+def _texto_completo(caminho: str) -> tuple[str, str]:
+    """Roda num processo separado: devolve (caminho, texto inteiro) ou (caminho, "")."""
+    try:
+        return caminho, _extrair_tudo(caminho) or ""
+    except Exception:  # noqa: BLE001
+        return caminho, ""
+
+
+def completar_documentos(processos: int = 4, log=print) -> dict:
+    """Relê por INTEIRO os PDFs que o acervo guardou só pelo começo (antes eram lidas só 4 páginas).
+    Retomável: os já completados ficam marcados como 'conteúdo (completo)'."""
+    import concurrent.futures as cf
+    con = _tabelas()
+    linhas = con.execute("""SELECT caminho, tipo, caracteres FROM leituras WHERE status = 'lido'
+                            AND metodo = 'conteúdo' AND lower(caminho) LIKE '%.pdf'""").fetchall()
+    fila = [(c, t, n or 0) for c, t, n in linhas if Path(c).exists()]   # os de dentro de .zip/.rar ficam como estão
+    info = {c: (t, n) for c, t, n in fila}
+    log(f"📚 {len(fila):,} PDFs para reler por inteiro ({len(linhas) - len(fila):,} dentro de compactados ou sumidos)")
+    contagem = {"ampliados": 0, "iguais": 0, "falhas": 0}
+    caracteres_novos, inicio = 0, time.time()
+    with cf.ProcessPoolExecutor(processos) as pool:
+        for n, (caminho, texto) in enumerate(pool.map(_texto_completo, [c for c, _, _ in fila], chunksize=8), 1):
+            tipo, antes = info[caminho]
+            if not texto.strip():
+                contagem["falhas"] += 1
+                metodo = "conteúdo"          # tenta de novo numa próxima vez
+            else:
+                metodo = "conteúdo (completo)"
+                if len(texto) > antes + 200:
+                    _salvar_ficha(caminho, tipo, metodo, texto)
+                    _indexar(con, caminho, tipo, texto)
+                    contagem["ampliados"] += 1
+                    caracteres_novos += len(texto) - antes
+                else:
+                    contagem["iguais"] += 1
+            con.execute("UPDATE leituras SET metodo = ?, caracteres = MAX(caracteres, ?) WHERE caminho = ?",
+                        (metodo, len(texto), caminho))
+            if n % 50 == 0:
+                con.commit()
+            if n % 500 == 0:
+                log(f"   {n:,}/{len(fila):,} · ampliados {contagem['ampliados']:,} · "
+                    f"+{caracteres_novos / 1e6:.0f} milhões de caracteres · {(time.time() - inicio) / 60:.0f} min")
+    con.commit()
+    con.close()
+    log(f"✅ PDFs completos: {contagem['ampliados']:,} ampliados, {contagem['iguais']:,} já estavam inteiros, "
+        f"{contagem['falhas']:,} sem texto · +{caracteres_novos / 1e6:.0f} milhões de caracteres no acervo")
+    return contagem
