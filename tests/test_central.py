@@ -101,15 +101,23 @@ class TestCentral(unittest.TestCase):
             curador.PASTA = Path(tmp) / "estado"
             curador.CATALOGO = curador.PASTA / "catalogo.db"
             curador.REGISTRO_MOVIMENTOS = curador.PASTA / "mov.jsonl"
-            self.assertEqual(curador.catalogar(raiz, log=lambda *_: None), 1)
-            con = curador._conectar()
-            con.execute("UPDATE arquivos SET tema='08. HISTÓRIA & BIOGRAFIAS', confianca=0.9, status='classificado'")
+            (raiz / "QGIS" / "apps").mkdir(parents=True)
+            (raiz / "QGIS" / "apps" / "qgis.exe").write_text("x")
+            self.assertEqual(curador.catalogar(raiz, log=lambda *_: None), 2)
+            self.assertEqual(curador.identificar_colecoes(raiz, log=lambda *_: None), 2)
+            con = curador._conectar_colecoes()
+            protegida = dict(con.execute("SELECT caminho, protegida FROM colecoes").fetchall())
+            self.assertEqual(protegida[str(raiz / "QGIS")], 1)   # programa: nunca será movido
+            con.execute("UPDATE colecoes SET tema='08. HISTÓRIA & BIOGRAFIAS', confianca=0.9, "
+                        "status='classificada'")              # simula a IA (inclusive na pasta protegida)
             con.commit(); con.close()
-            self.assertTrue(arquivo.exists())                  # classificar não move nada
-            self.assertEqual(curador.propor(raiz), 1)
-            self.assertTrue(arquivo.exists())                  # propor também não
+            self.assertEqual(curador.propor(raiz), 1)          # só a pasta comum vira proposta
+            self.assertTrue(arquivo.exists())                  # propor não move nada
             self.assertEqual(curador.aplicar(raiz, log=lambda *_: None), 1)
             self.assertFalse(arquivo.exists())
+            self.assertTrue((raiz / "QGIS" / "apps" / "qgis.exe").exists())  # programa intacto
+            movido = raiz / "ORGANIZADO PELO CURADOR" / "08. HISTÓRIA & BIOGRAFIAS" / "bagunca" / "historia_de_roma.pdf"
+            self.assertTrue(movido.exists())                   # a PASTA inteira foi junto
             self.assertEqual(curador.desfazer(log=lambda *_: None), 1)
             self.assertTrue(arquivo.exists())                  # voltou ao lugar original
 

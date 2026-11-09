@@ -3,10 +3,14 @@ só move arquivos com o SEU consentimento, e tudo pode ser desfeito.
 
 Etapas (cada uma pode ser rodada quantas vezes quiser):
   1. catalogar   — lê nomes, tamanhos e datas (não abre nem altera nada)
-  2. classificar — a IA lê só o CAMINHO/NOME dos arquivos e sugere um tema
-  3. propostas   — mostra para onde cada arquivo iria (nada é movido)
-  4. aplicar     — move um lote, depois da sua aprovação (terminal ou Telegram)
-  5. desfazer    — devolve o último lote ao lugar original
+  2. coleções    — agrupa por PASTA; pastas com programas/sistemas ficam PROTEGIDAS
+  3. classificar — a IA lê o nome da pasta + exemplos de arquivos e sugere um tema
+  4. propostas   — mostra para onde cada pasta iria (nada é movido)
+  5. aplicar     — move um lote de pastas, depois da sua aprovação (terminal ou Telegram)
+  6. desfazer    — devolve o último lote ao lugar original
+
+O curador move PASTAS INTEIRAS, nunca arquivos soltos de dentro delas
+(isso quebraria programas instalados e cursos).
 
 Regras de segurança: nunca apaga; nunca sobrescreve (renomeia se já existir);
 só move dentro da mesma raiz (ex.: dentro do Google Drive); registra cada movimento.
@@ -53,6 +57,22 @@ TEMAS_PADRAO = [
 ]
 
 
+def _raiz(raiz: str | Path) -> Path:
+    """Normaliza o disco/pasta: 'E:', 'E:\\' e 'E:"' (aspas que o Windows às vezes deixa) viram 'E:\\'."""
+    texto = str(raiz).strip().strip('"').strip("'")
+    if re.fullmatch(r"[A-Za-z]:", texto):
+        texto += "\\"
+    return Path(texto)
+
+
+def _tema_oficial(tema: str, temas: list[str]) -> str | None:
+    """Aceita o tema mesmo se a IA omitir o número ('COMUNICAÇÃO & …' → '01. COMUNICAÇÃO & …')."""
+    if tema in temas:
+        return tema
+    limpo = lambda t: re.sub(r"^\s*\d+\.\s*", "", t).strip().upper()  # noqa: E731
+    return next((t for t in temas if limpo(t) == limpo(tema)), None)
+
+
 def _conectar() -> sqlite3.Connection:
     PASTA.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(CATALOGO)
@@ -70,7 +90,7 @@ def _conectar() -> sqlite3.Connection:
 # ---------------------------------------------------------------- 1. catalogar
 def catalogar(raiz: str | Path, log=print) -> int:
     """Percorre a pasta e guarda nome, tamanho e data de cada arquivo. Somente leitura."""
-    raiz = Path(raiz)
+    raiz = _raiz(raiz)
     con, total, inicio = _conectar(), 0, time.time()
     pilha = [raiz]
     while pilha:
@@ -107,7 +127,7 @@ def catalogar(raiz: str | Path, log=print) -> int:
 
 def resumo(raiz: str | Path | None = None) -> str:
     con = _conectar()
-    filtro, args = ("WHERE raiz = ?", (str(raiz),)) if raiz else ("", ())
+    filtro, args = ("WHERE raiz = ?", (str(_raiz(raiz)),)) if raiz else ("", ())
     total, tamanho = con.execute(f"SELECT count(*), coalesce(sum(tamanho),0) FROM arquivos {filtro}", args).fetchone()
     tipos = con.execute(f"SELECT extensao, count(*) FROM arquivos {filtro} GROUP BY extensao "
                         "ORDER BY count(*) DESC LIMIT 8", args).fetchall()
@@ -131,25 +151,92 @@ def buscar(termo: str, limite: int = 25) -> list[tuple[str, int]]:
     return linhas
 
 
-# ---------------------------------------------------------------- 2. classificar
-def classificar(raiz: str | Path, limite: int = 500, temas: list[str] | None = None,
-                tamanho_lote: int = 60, log=print) -> int:
-    """A IA lê apenas o caminho relativo + nome do arquivo e sugere um tema."""
-    temas = temas or TEMAS_PADRAO
-    raiz = str(Path(raiz))
+# ---------------------------------------------------------------- 2. coleções
+# O curador organiza PASTAS INTEIRAS (coleções), nunca arquivos soltos de dentro delas:
+# mover um arquivo de dentro de um programa ou de um curso quebraria o programa/curso.
+
+SINAIS_DE_PROGRAMA = {".exe", ".dll", ".sys", ".msi", ".pyd", ".so", ".jar", ".bat", ".cmd", ".ps1"}
+PASTAS_DE_PROGRAMA = {"site-packages", "node_modules", ".git", "program files", "program files (x86)",
+                      "appdata", "windows", "bin", "lib", "apps", "venv", ".venv", "__pycache__"}
+
+
+def _conectar_colecoes() -> sqlite3.Connection:
     con = _conectar()
-    pendentes = con.execute("SELECT caminho FROM arquivos WHERE raiz = ? AND tema IS NULL LIMIT ?",
-                            (raiz, limite)).fetchall()
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS colecoes (
+            caminho TEXT PRIMARY KEY, raiz TEXT, arquivos INTEGER, tamanho INTEGER,
+            amostra TEXT, protegida INTEGER, motivo TEXT, tema TEXT, confianca REAL,
+            destino TEXT, status TEXT DEFAULT 'identificada');
+    """)
+    return con
+
+
+def identificar_colecoes(raiz: str | Path, profundidade: int = 1, log=print) -> int:
+    """Agrupa o catálogo em coleções (pastas no nível `profundidade` abaixo da raiz) e marca
+    como PROTEGIDAS as que parecem programas, códigos ou sistemas — essas nunca são movidas."""
+    raiz = _raiz(raiz)
+    con = _conectar_colecoes()
+    grupos: dict[str, dict] = {}
+    for caminho, nome, ext, tamanho in con.execute(
+            "SELECT caminho, nome, extensao, tamanho FROM arquivos WHERE raiz = ?", (str(raiz),)):
+        partes = Path(caminho).relative_to(raiz).parts
+        if len(partes) <= profundidade:          # arquivo solto: é a própria coleção
+            chave = caminho
+        else:
+            chave = str(raiz.joinpath(*partes[:profundidade]))
+        g = grupos.setdefault(chave, {"n": 0, "tam": 0, "amostra": [], "programa": None})
+        g["n"] += 1
+        g["tam"] += tamanho or 0
+        if len(g["amostra"]) < 12 and ext not in SINAIS_DE_PROGRAMA:
+            g["amostra"].append(nome)
+        if g["programa"] is None and len(partes) > profundidade and \
+                re.search(r"backup|pen ?drive|dcim", Path(chave).name, re.I):
+            g["programa"] = "backup/cópia de dispositivo (mantida como está)"
+        if g["programa"] is None:
+            pastas = {p.lower() for p in partes[:-1]}
+            if ext in SINAIS_DE_PROGRAMA:
+                g["programa"] = f"contém programa ({ext})"
+            elif pastas & PASTAS_DE_PROGRAMA:
+                g["programa"] = f"contém pasta de sistema ({sorted(pastas & PASTAS_DE_PROGRAMA)[0]})"
+    for chave, g in grupos.items():
+        con.execute("""INSERT INTO colecoes (caminho, raiz, arquivos, tamanho, amostra, protegida, motivo)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(caminho) DO UPDATE SET arquivos=excluded.arquivos, tamanho=excluded.tamanho,
+                       amostra=excluded.amostra, protegida=excluded.protegida, motivo=excluded.motivo""",
+                    (chave, str(raiz), g["n"], g["tam"], json.dumps(g["amostra"], ensure_ascii=False),
+                     int(bool(g["programa"])), g["programa"] or ""))
+    con.commit()
+    protegidas = sum(1 for g in grupos.values() if g["programa"])
+    con.close()
+    log(f"✅ {len(grupos)} coleções em {raiz} ({protegidas} protegidas por conterem programas/sistemas)")
+    return len(grupos)
+
+
+# ---------------------------------------------------------------- 3. classificar
+def classificar(raiz: str | Path, limite: int = 200, temas: list[str] | None = None,
+                tamanho_lote: int = 25, log=print) -> int:
+    """A IA lê o NOME da pasta e uma amostra dos nomes de arquivos dentro dela e sugere um tema.
+    Coleções protegidas não são classificadas (não serão movidas)."""
+    temas = temas or TEMAS_PADRAO
+    raiz = _raiz(raiz)
+    con = _conectar_colecoes()
+    if not con.execute("SELECT 1 FROM colecoes WHERE raiz = ? LIMIT 1", (str(raiz),)).fetchone():
+        con.close()
+        identificar_colecoes(raiz, log=log)
+        con = _conectar_colecoes()
+    pendentes = con.execute("""SELECT caminho, arquivos, amostra FROM colecoes WHERE raiz = ? AND protegida = 0
+                               AND tema IS NULL ORDER BY tamanho DESC LIMIT ?""", (str(raiz), limite)).fetchall()
+    sistema = ("Você é um bibliotecário que organiza coleções (pastas) por tema. Para cada coleção você "
+               "recebe o nome da pasta, quantos arquivos tem e exemplos de nomes de arquivos. "
+               "Escolha o tema mais adequado da lista e uma confiança de 0 a 1. Se for impossível saber, "
+               "use '99. NÃO CLASSIFICADO'. Responda SOMENTE com JSON.")
     feitos = 0
-    sistema = ("Você é um bibliotecário que organiza arquivos por tema. Recebe caminhos de arquivos "
-               "e devolve, para cada um, o tema mais adequado da lista. Use o nome do arquivo E as pastas "
-               "do caminho como pistas. Se não der para saber, use '99. NÃO CLASSIFICADO'. "
-               "Responda SOMENTE com JSON.")
     for inicio in range(0, len(pendentes), tamanho_lote):
-        lote = [c for (c,) in pendentes[inicio:inicio + tamanho_lote]]
-        itens = "\n".join(f"{i}: {os.path.relpath(c, raiz)}" for i, c in enumerate(lote))
-        mensagem = (f"Temas permitidos:\n" + "\n".join(temas) + f"\n\nArquivos:\n{itens}\n\n"
-                    'Formato: [{"i": 0, "tema": "<tema exato da lista>", "confianca": 0.0-1.0}, ...]')
+        lote = pendentes[inicio:inicio + tamanho_lote]
+        itens = "\n".join(f"{i}: pasta '{os.path.relpath(c, raiz)}' ({n} arquivos) ex.: {', '.join(json.loads(a)[:8])}"
+                          for i, (c, n, a) in enumerate(lote))
+        mensagem = (f"Temas permitidos:\n" + "\n".join(temas) + f"\n\nColeções:\n{itens}\n\n"
+                    'Formato: [{"i": 0, "tema": "<tema exato da lista>", "confianca": 0.0}, ...]')
         try:
             _, resposta = provedores.chamar_com_reserva(MODELOS, sistema, mensagem, log=log)
             bloco = re.search(r"\[.*\]", resposta, re.S)
@@ -159,36 +246,35 @@ def classificar(raiz: str | Path, limite: int = 500, temas: list[str] | None = N
             continue
         for d in dados:
             try:
-                i, tema = int(d["i"]), str(d["tema"])
+                i, tema = int(d["i"]), _tema_oficial(str(d["tema"]), temas)
             except (KeyError, ValueError, TypeError):
                 continue
-            if 0 <= i < len(lote) and tema in temas:
-                con.execute("UPDATE arquivos SET tema = ?, confianca = ?, status = 'classificado' WHERE caminho = ?",
-                            (tema, float(d.get("confianca", 0.5) or 0.5), lote[i]))
+            if tema and 0 <= i < len(lote):
+                con.execute("UPDATE colecoes SET tema = ?, confianca = ?, status = 'classificada' WHERE caminho = ?",
+                            (tema, float(d.get("confianca") or 0.5), lote[i][0]))
                 feitos += 1
         con.commit()
-        log(f"   classificados {feitos}/{len(pendentes)}")
+        log(f"   classificadas {feitos}/{len(pendentes)} coleções")
     con.close()
     return feitos
 
 
-# ---------------------------------------------------------------- 3. propostas
+# ---------------------------------------------------------------- 4. propostas
 def propor(raiz: str | Path, pasta_organizada: str | Path | None = None, confianca_minima: float = 0.7) -> int:
-    """Calcula para onde cada arquivo classificado iria. NADA é movido aqui."""
-    raiz = Path(raiz)
+    """Calcula para onde cada coleção iria. NADA é movido aqui."""
+    raiz = _raiz(raiz)
     base = Path(pasta_organizada) if pasta_organizada else raiz / "ORGANIZADO PELO CURADOR"
-    con = _conectar()
-    linhas = con.execute("""SELECT caminho, tema FROM arquivos WHERE raiz = ? AND status = 'classificado'
-                            AND confianca >= ? AND tema != '99. NÃO CLASSIFICADO'""",
-                         (str(raiz), confianca_minima)).fetchall()
+    con = _conectar_colecoes()
     n = 0
-    for caminho, tema in linhas:
+    for caminho, tema in con.execute("""SELECT caminho, tema FROM colecoes WHERE raiz = ? AND protegida = 0
+                                        AND status = 'classificada' AND confianca >= ?
+                                        AND tema != '99. NÃO CLASSIFICADO'""",
+                                     (str(raiz), confianca_minima)).fetchall():
         atual = Path(caminho)
-        if tema in atual.parts:          # já está numa pasta desse tema
+        if tema in atual.parts or base in atual.parents or atual == base:
             continue
-        relativo = atual.relative_to(raiz)
-        destino = base / tema / relativo  # mantém a estrutura original dentro do tema
-        con.execute("UPDATE arquivos SET destino = ?, status = 'proposto' WHERE caminho = ?", (str(destino), caminho))
+        destino = base / tema / atual.relative_to(raiz)
+        con.execute("UPDATE colecoes SET destino = ?, status = 'proposta' WHERE caminho = ?", (str(destino), caminho))
         n += 1
     con.commit()
     con.close()
@@ -196,14 +282,26 @@ def propor(raiz: str | Path, pasta_organizada: str | Path | None = None, confian
 
 
 def listar_propostas(raiz: str | Path, limite: int = 20) -> list[tuple[str, str, str]]:
-    con = _conectar()
-    linhas = con.execute("SELECT caminho, destino, tema FROM arquivos WHERE raiz = ? AND status = 'proposto' "
-                         "ORDER BY confianca DESC LIMIT ?", (str(Path(raiz)), limite)).fetchall()
+    con = _conectar_colecoes()
+    linhas = con.execute("""SELECT caminho, destino, tema FROM colecoes WHERE raiz = ? AND status = 'proposta'
+                            ORDER BY confianca DESC, tamanho DESC LIMIT ?""", (str(_raiz(raiz)), limite)).fetchall()
     con.close()
     return linhas
 
 
-# ---------------------------------------------------------------- 4. aplicar / 5. desfazer
+def resumo_colecoes(raiz: str | Path) -> str:
+    con = _conectar_colecoes()
+    r = str(_raiz(raiz))
+    total, prot = con.execute("SELECT count(*), sum(protegida) FROM colecoes WHERE raiz = ?", (r,)).fetchone()
+    temas = con.execute("""SELECT tema, count(*), sum(tamanho) FROM colecoes WHERE raiz = ? AND tema IS NOT NULL
+                           GROUP BY tema ORDER BY sum(tamanho) DESC""", (r,)).fetchall()
+    con.close()
+    linhas = [f"{total or 0} coleções · {prot or 0} protegidas (programas/sistemas, não serão movidas)"]
+    linhas += [f"• {t}: {n} coleções, {s / 1e9:.1f} GB" for t, n, s in temas]
+    return "\n".join(linhas)
+
+
+# ---------------------------------------------------------------- 5. aplicar / 6. desfazer
 def _livre(destino: Path) -> Path:
     if not destino.exists():
         return destino
@@ -214,30 +312,31 @@ def _livre(destino: Path) -> Path:
     raise FileExistsError(destino)
 
 
-def aplicar(raiz: str | Path, quantidade: int = 50, log=print) -> int:
-    """Move um lote de arquivos propostos. Chame SOMENTE depois da aprovação do usuário."""
-    raiz = Path(raiz)
+def aplicar(raiz: str | Path, quantidade: int = 10, log=print) -> int:
+    """Move um lote de COLEÇÕES propostas. Chame SOMENTE depois da aprovação do usuário."""
+    raiz = _raiz(raiz)
     lote_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     movidos = 0
-    con = _conectar()
-    for caminho, destino in con.execute("SELECT caminho, destino FROM arquivos WHERE raiz = ? AND status = 'proposto' "
-                                        "ORDER BY confianca DESC LIMIT ?", (str(raiz), quantidade)).fetchall():
+    con = _conectar_colecoes()
+    for caminho, destino in con.execute("""SELECT caminho, destino FROM colecoes WHERE raiz = ? AND status = 'proposta'
+                                           AND protegida = 0 ORDER BY confianca DESC, tamanho DESC LIMIT ?""",
+                                        (str(raiz), quantidade)).fetchall():
         origem, alvo = Path(caminho), Path(destino)
-        if alvo.anchor.lower() != raiz.anchor.lower() or raiz not in alvo.parents:
-            continue                                   # nunca move para fora da raiz
+        if raiz not in alvo.parents:              # nunca move para fora da raiz
+            continue
         if not origem.exists():
-            con.execute("UPDATE arquivos SET status = 'sumiu' WHERE caminho = ?", (caminho,))
+            con.execute("UPDATE colecoes SET status = 'sumiu' WHERE caminho = ?", (caminho,))
             continue
         alvo.parent.mkdir(parents=True, exist_ok=True)
         alvo = _livre(alvo)
         shutil.move(str(origem), str(alvo))
         with open(REGISTRO_MOVIMENTOS, "a", encoding="utf-8") as f:
             f.write(json.dumps({"lote": lote_id, "de": str(origem), "para": str(alvo)}, ensure_ascii=False) + "\n")
-        con.execute("UPDATE arquivos SET caminho = ?, status = 'movido' WHERE caminho = ?", (str(alvo), caminho))
+        con.execute("UPDATE colecoes SET caminho = ?, status = 'movida' WHERE caminho = ?", (str(alvo), caminho))
         movidos += 1
     con.commit()
     con.close()
-    log(f"✅ {movidos} arquivos movidos (lote {lote_id}). Para desfazer: curador desfazer")
+    log(f"✅ {movidos} coleções movidas (lote {lote_id}). Para desfazer: curador desfazer")
     return movidos
 
 
@@ -250,18 +349,18 @@ def desfazer(log=print) -> int:
     if not registros:
         return 0
     ultimo = registros[-1]["lote"]
-    con, desfeitos = _conectar(), 0
+    con, desfeitos = _conectar_colecoes(), 0
     for r in reversed([r for r in registros if r["lote"] == ultimo]):
         de, para = Path(r["de"]), Path(r["para"])
         if para.exists() and not de.exists():
             de.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(para), str(de))
-            con.execute("UPDATE arquivos SET caminho = ?, status = 'proposto' WHERE caminho = ?", (str(de), str(para)))
+            con.execute("UPDATE colecoes SET caminho = ?, status = 'proposta' WHERE caminho = ?", (str(de), str(para)))
             desfeitos += 1
     con.commit()
     con.close()
     restantes = [r for r in registros if r["lote"] != ultimo]
     REGISTRO_MOVIMENTOS.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in restantes),
                                    encoding="utf-8")
-    log(f"↩ {desfeitos} arquivos devolvidos (lote {ultimo}).")
+    log(f"↩ {desfeitos} coleções devolvidas (lote {ultimo}).")
     return desfeitos

@@ -122,10 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     c_idx = sub.add_parser("indexar", help="indexa a biblioteca de um agente de conhecimento (ou todos)")
     c_idx.add_argument("agente", nargs="?", default="todos")
     c_cur = sub.add_parser("curador", help="cataloga, classifica e reorganiza arquivos (com seu consentimento)")
-    c_cur.add_argument("acao", choices=["catalogar", "resumo", "buscar", "classificar", "propostas",
-                                         "aplicar", "desfazer"])
+    c_cur.add_argument("acao", choices=["catalogar", "colecoes", "resumo", "buscar", "classificar",
+                                         "propostas", "aplicar", "desfazer"])
     c_cur.add_argument("alvo", nargs="?", default="", help="pasta/disco (ou o termo, em 'buscar')")
-    c_cur.add_argument("--quantidade", type=int, default=50, help="tamanho do lote (classificar/aplicar)")
+    c_cur.add_argument("--quantidade", type=int, default=10, help="tamanho do lote (classificar/aplicar)")
 
     c = sub.add_parser("perguntar", help="fala direto com um agente")
     c.add_argument("agente")
@@ -163,10 +163,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         elif a.acao == "catalogar":
             curador.catalogar(alvo)
+            curador.identificar_colecoes(alvo)
+        elif a.acao == "colecoes":
+            curador.identificar_colecoes(alvo)
+            print(curador.resumo_colecoes(alvo))
         elif a.acao == "classificar":
-            print(f"{curador.classificar(alvo, limite=a.quantidade)} arquivos classificados")
+            print(f"{curador.classificar(alvo, limite=a.quantidade)} coleções classificadas")
+            print(curador.resumo_colecoes(alvo))
         elif a.acao == "propostas":
-            print(f"{curador.propor(alvo)} propostas de movimento (nada foi movido). Exemplos:")
+            print(f"{curador.propor(alvo)} pastas propostas para mover (nada foi movido). Exemplos:")
             for de, para, tema in curador.listar_propostas(alvo):
                 print(f"• [{tema}]\n   de:   {de}\n   para: {para}")
         elif a.acao == "aplicar":
@@ -174,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
             if not exemplos:
                 print("Nenhuma proposta. Rode antes: classificar e propostas.")
                 return 0
-            texto = f"📦 Curador quer mover {len(exemplos)} arquivos em {alvo}:\n" + "\n".join(
+            texto = f"📦 Curador quer mover {len(exemplos)} PASTAS inteiras em {alvo}:\n" + "\n".join(
                 f"• {Path(de).name} → {tema}" for de, _, tema in exemplos[:15])
             ok = telegram.pedir_aprovacao(texto) if telegram.configurado() else \
                 input(f"{texto}\n\nMover? [s/N] ").strip().lower() in ("s", "sim")
