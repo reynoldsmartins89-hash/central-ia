@@ -16,23 +16,32 @@ from . import provedores, telegram
 from .agentes import carregar_equipe
 from .orquestrador import PASTA_FLUXOS, PlanoCancelado, Superagente, formatar_plano
 
-AJUDA = """🧠 Central de IA — como falar comigo
+COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 
-Escreva o que você quer, em texto livre. Exemplos:
-• "Crie um plano de 30 dias para lançar minha newsletter"
-• "Analise as tendências de IA para pequenas empresas"
+✍️ PEDIR TRABALHO
+• (texto livre) — o superagente monta a equipe e executa, após sua aprovação
+   ex.: Analise o impacto da IA no agronegócio brasileiro para um artigo
+• /conteudo <tema> — pacote editorial completo: dossiê, artigo-mãe, revisão,
+   redes sociais, imagens, carrossel e roteiro de YouTube
+• /rapido <pergunta> — resposta direta, sem plano nem aprovação
 
-Comandos:
-/conteudo <tema> — pacote completo: dossiê, artigo-mãe, revisão, redes sociais e roteiro de YouTube
-/equipe <pedido> — o secretário recomenda quais agentes usar (sem executar)
-/rapido <pergunta> — resposta direta, sem plano
-/buscar <termo> — onde estão seus arquivos sobre um assunto (Drive e HDs)
-/curador — resumo do catálogo dos seus discos
-/agentes — ver a equipe
-/status — ver quais IAs estão funcionando
-/ajuda — esta mensagem
+🗂 SECRETÁRIO (orientação, sem executar)
+• /equipe <pedido> — quais agentes devem trabalhar juntos e por quê
+• /agentes — a equipe completa e o que cada um faz
 
-Planos com mais de uma etapa pedem sua aprovação aqui antes de rodar."""
+🗃 ARQUIVOS (Drive e HDs)
+• /buscar <assunto> — onde estão seus arquivos sobre um assunto
+• /curador — resumo do catálogo dos seus discos
+• /duplicados — cópias idênticas encontradas e espaço recuperável
+• /integridade — arquivos corrompidos ou incompletos
+
+⚙️ SISTEMA
+• /status — quais IAs estão funcionando agora
+• /comandos — esta lista
+
+🔒 Regra: nada é publicado, movido ou apagado sem o seu ✅ aqui no Telegram."""
+
+AJUDA = COMANDOS
 
 
 def _aprovar_se_preciso(plano) -> bool:
@@ -81,6 +90,17 @@ def tratar(texto: str) -> None:
     if comando == "/curador":
         from . import curador
         telegram.enviar("🗃 Catálogo do curador:\n" + curador.resumo())
+        return
+    if comando == "/duplicados":
+        from . import duplicados
+        telegram.enviar("🗂 Arquivos duplicados:\n" + duplicados.relatorio(5))
+        return
+    if comando == "/integridade":
+        from . import integridade
+        telegram.enviar("🩺 Integridade dos arquivos:\n" + integridade.relatorio(exemplos=3))
+        return
+    if comando in ("/comandos", "/menu"):
+        telegram.enviar(COMANDOS)
         return
     if comando == "/rapido":
         if not resto:

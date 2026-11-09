@@ -121,6 +121,33 @@ class TestCentral(unittest.TestCase):
             self.assertEqual(curador.desfazer(log=lambda *_: None), 1)
             self.assertTrue(arquivo.exists())                  # voltou ao lugar original
 
+    def test_duplicados_e_integridade(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import curador, duplicados, integridade
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp) / "hd"
+            (raiz / "a").mkdir(parents=True); (raiz / "b").mkdir()
+            conteudo = b"conteudo identico " * 100_000
+            (raiz / "a" / "aula.mp4").write_bytes(conteudo)
+            (raiz / "b" / "copia com outro nome.mp4").write_bytes(conteudo)
+            (raiz / "b" / "diferente.mp4").write_bytes(b"x" * len(conteudo))
+            (raiz / "quebrado.docx").write_bytes(b"isto nao e um docx")
+            (raiz / "baixando.crdownload").write_bytes(b"...")
+            curador.PASTA = Path(tmp) / "estado"
+            curador.CATALOGO = curador.PASTA / "catalogo.db"
+            curador.REGISTRO_MOVIMENTOS = curador.PASTA / "mov.jsonl"
+            duplicados.REGISTRO_MOVIMENTOS = curador.REGISTRO_MOVIMENTOS
+            curador.catalogar(raiz, log=lambda *_: None)
+            self.assertEqual(duplicados.encontrar([raiz], tamanho_minimo=1, log=lambda *_: None)["grupos"], 1)
+            self.assertEqual(duplicados.separar(raiz, log=lambda *_: None), 1)   # só a cópia sai
+            quarentena = list((raiz / duplicados.PASTA_QUARENTENA).rglob("*.mp4"))
+            self.assertEqual(len(quarentena), 1)
+            self.assertEqual(curador.desfazer(log=lambda *_: None), 1)
+            self.assertEqual(integridade.verificar(raiz / "quebrado.docx"), "pacote (zip/Office) corrompido")
+            self.assertEqual(integridade.verificar(raiz / "baixando.crdownload"), "download/cópia incompleto")
+            self.assertIn("vídeo", integridade.verificar(raiz / "b" / "diferente.mp4"))
+
     def test_combinacoes_existem(self):
         from superagente.agentes import carregar_combinacoes
         combos = carregar_combinacoes()

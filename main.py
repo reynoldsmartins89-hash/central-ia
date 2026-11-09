@@ -121,6 +121,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("bot", help="liga o bot: comande a Central pelo Telegram")
     c_idx = sub.add_parser("indexar", help="indexa a biblioteca de um agente de conhecimento (ou todos)")
     c_idx.add_argument("agente", nargs="?", default="todos")
+    c_dup = sub.add_parser("duplicados", help="encontra cópias idênticas e as separa (com seu consentimento)")
+    c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar"])
+    c_dup.add_argument("alvo", nargs="*", default=[], help="discos/pastas (padrão: todos os catalogados)")
+    c_dup.add_argument("--quantidade", type=int, default=100)
+    c_int = sub.add_parser("integridade", help="encontra arquivos corrompidos ou incompletos (só lê)")
+    c_int.add_argument("acao", choices=["verificar", "relatorio"])
+    c_int.add_argument("alvo", nargs="?", default="")
     c_cur = sub.add_parser("curador", help="cataloga, classifica e reorganiza arquivos (com seu consentimento)")
     c_cur.add_argument("acao", choices=["catalogar", "colecoes", "resumo", "buscar", "classificar",
                                          "propostas", "aplicar", "desfazer"])
@@ -149,6 +156,37 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "telegram":
         return configurar_telegram()
+
+    if a.comando == "duplicados":
+        from superagente import duplicados
+        if a.acao == "procurar":
+            duplicados.encontrar(a.alvo or None)
+        elif a.acao == "relatorio":
+            print(duplicados.relatorio())
+        elif a.acao == "separar":
+            if len(a.alvo) != 1:
+                print('Informe UM disco, ex.: duplicados separar "E:\\"')
+                return 1
+            texto = (f"🗂 Separar até {a.quantidade} cópias duplicadas de {a.alvo[0]} para a pasta "
+                     f"'{duplicados.PASTA_QUARENTENA}' (nada é apagado; os originais ficam onde estão)?\n\n"
+                     + duplicados.relatorio(5))
+            ok = telegram.pedir_aprovacao(texto) if telegram.configurado() else \
+                input(f"{texto}\n\nSeparar? [s/N] ").strip().lower() in ("s", "sim")
+            if ok:
+                duplicados.separar(a.alvo[0], a.quantidade)
+            else:
+                print("Nada foi movido.")
+        return 0
+
+    if a.comando == "integridade":
+        from superagente import integridade
+        if a.acao == "verificar":
+            if not a.alvo:
+                print('Informe o disco, ex.: integridade verificar "E:\\"')
+                return 1
+            integridade.varrer(a.alvo)
+        print(integridade.relatorio(a.alvo or None))
+        return 0
 
     if a.comando == "curador":
         from superagente import curador
