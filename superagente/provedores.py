@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -43,6 +44,9 @@ def _chave(nome_env: str) -> str:
     return valor
 
 
+ESPERAS_RETENTATIVA = (5, 15)  # segundos entre novas tentativas quando o provedor está ocupado
+
+
 def _post(url: str, corpo: dict, cabecalhos: dict) -> dict:
     requisicao = urllib.request.Request(
         url,
@@ -50,14 +54,20 @@ def _post(url: str, corpo: dict, cabecalhos: dict) -> dict:
         headers={"Content-Type": "application/json", **cabecalhos},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(requisicao, timeout=TIMEOUT) as resposta:
-            return json.loads(resposta.read().decode("utf-8"))
-    except urllib.error.HTTPError as erro:
-        detalhe = erro.read().decode("utf-8", errors="ignore")[:300]
-        raise ErroProvedor(f"HTTP {erro.code}: {detalhe}") from erro
-    except (urllib.error.URLError, TimeoutError, OSError) as erro:
-        raise ErroProvedor(f"sem conexão: {erro}") from erro
+    for tentativa in range(len(ESPERAS_RETENTATIVA) + 1):
+        try:
+            with urllib.request.urlopen(requisicao, timeout=TIMEOUT) as resposta:
+                return json.loads(resposta.read().decode("utf-8"))
+        except urllib.error.HTTPError as erro:
+            # 429 = limite por minuto; 500/503 = provedor sobrecarregado → espera e tenta de novo
+            if erro.code in (429, 500, 503) and tentativa < len(ESPERAS_RETENTATIVA):
+                time.sleep(ESPERAS_RETENTATIVA[tentativa])
+                continue
+            detalhe = erro.read().decode("utf-8", errors="ignore")[:300]
+            raise ErroProvedor(f"HTTP {erro.code}: {detalhe}") from erro
+        except (urllib.error.URLError, TimeoutError, OSError) as erro:
+            raise ErroProvedor(f"sem conexão: {erro}") from erro
+    raise ErroProvedor("provedor não respondeu")
 
 
 def _ollama(modelo: str, sistema: str, mensagem: str) -> str:
