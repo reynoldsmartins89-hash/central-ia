@@ -252,3 +252,21 @@ class TestReparadorEVigia(unittest.TestCase):
         from superagente.drive import caminho_local
         self.assertNotIn(":", str(caminho_local("EBOOKS/Maçonaria: História/x.pdf"))[2:])
 
+
+
+class TestExecutor(unittest.TestCase):
+    def test_reconhece_ordens_de_acao(self):
+        from superagente.executor import parece_acao
+        self.assertTrue(parece_acao("Mova os PDFs da área de trabalho para Documentos"))
+        self.assertTrue(parece_acao("repare os arquivos corrompidos do HD"))
+        self.assertFalse(parece_acao("Escreva um artigo sobre geopolítica do petróleo"))
+
+    def test_plano_sem_acao(self):
+        from superagente.executor import sem_acao
+        self.assertTrue(sem_acao("Isso é só uma pergunta.\nSEM AÇÃO"))
+        self.assertFalse(sem_acao("1. Mover arquivos"))
+
+    def test_regras_de_seguranca_presentes(self):
+        from superagente.executor import REGRAS
+        for regra in ("NUNCA apague definitivamente", "senhas", "NUNCA envie mensagens"):
+            self.assertIn(regra, REGRAS)

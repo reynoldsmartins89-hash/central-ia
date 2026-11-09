@@ -14,7 +14,11 @@ ARQUIVO_AGENTES = RAIZ / "agentes" / "agentes.toml"
 REGRAS_GERAIS = (
     "Responda em português do Brasil, em Markdown. "
     "Nunca invente fatos, números, citações ou fontes; sinalize incertezas. "
-    "Você faz parte de uma equipe: entregue apenas a sua parte, completa e pronta para a próxima etapa."
+    "Você faz parte de uma equipe: entregue apenas a sua parte, completa e pronta para a próxima etapa. "
+    "IMPORTANTE: a Central de IA TEM um Agente Executor que faz ações reais no PC do usuário (arquivos, "
+    "pastas, programas, scripts, HDs e Drive) quando ele manda a ordem pelo Telegram (/pc <ordem>, ou só "
+    "escrever a ordem). Nunca diga que ninguém pode executar: se a tarefa exigir ação no computador, "
+    "descreva-a e diga que o Executor pode fazê-la após o ✅ do usuário."
 )
 
 

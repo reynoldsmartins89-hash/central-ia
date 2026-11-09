@@ -5,6 +5,17 @@ Regra de ouro: **nada é publicado, movido ou apagado sem o seu ✅.**
 
 ## No Telegram (uso diário)
 
+### 🖐 Executar no seu PC (de qualquer lugar)
+| Comando | O que faz |
+|---|---|
+| `/pc <ordem>` | O **Agente Executor** (Claude Code, sua assinatura) faz de verdade no PC: arquivos, pastas, programas, scripts, HDs, Drive e as ferramentas da Central. Ele **investiga só lendo → mostra o plano → espera o seu ✅ → executa → manda o relatório** |
+| `/continuar <ordem>` | Segue a tarefa anterior do Executor, lembrando o contexto |
+| *(ordem em texto livre)* | "Organize…", "mova…", "repare…" são reconhecidos como ordens e vão para o Executor |
+
+Segurança: nada muda sem o seu ✅; cada comando passa pelo revisor de segurança do Claude Code;
+o Executor nunca apaga de vez (move para "PARA APAGAR - REVISAR" ou Lixeira), não mexe em senhas/chaves,
+não envia mensagens nem faz compras. Histórico em `~/.central-ia/executor.jsonl`.
+
 ### ✍️ Pedir trabalho
 | Comando | O que faz | Devolve |
 |---|---|---|

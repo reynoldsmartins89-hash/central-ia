@@ -18,6 +18,13 @@ from .orquestrador import PASTA_FLUXOS, PlanoCancelado, Superagente, formatar_pl
 
 COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 
+🖐 EXECUTAR NO SEU PC (de qualquer lugar)
+• /pc <ordem> — o Agente Executor faz de verdade: arquivos, pastas, programas,
+   scripts, HDs, Drive e as ferramentas da Central. Mostra o plano → seu ✅ → executa → relatório
+   ex.: /pc mova os PDFs da Área de Trabalho para Documentos/PDFs
+• /continuar <ordem> — segue na MESMA tarefa anterior do Executor (ele lembra o contexto)
+• Ordens em texto livre ("organize…", "repare…", "mova…") também vão para o Executor
+
 ✍️ PEDIR TRABALHO
 • (texto livre) — o superagente monta a equipe e executa, após sua aprovação
    ex.: Analise o impacto da IA no agronegócio brasileiro para um artigo
@@ -127,6 +134,18 @@ def tratar(texto: str) -> None:
         telegram.enviar(f"[{modelo}]\n\n{resposta}")
         return
 
+    if comando in ("/pc", "/executar", "/continuar"):
+        if not resto:
+            telegram.enviar("Use: /pc sua ordem — ex.: /pc liste os 10 maiores arquivos do HD E:")
+            return
+        _executar_no_pc(resto, continuar=comando == "/continuar")
+        return
+    if not comando.startswith("/"):
+        from . import executor
+        if executor.disponivel() and executor.classificar(texto) == "acao":
+            _executar_no_pc(texto)
+            return
+
     sa = Superagente(aprovar=_aprovar_se_preciso, ao_vivo=True, log=print)
     if comando == "/conteudo":
         if not resto:
@@ -144,6 +163,27 @@ def tratar(texto: str) -> None:
 
     telegram.enviar("🧠 Recebido! O superagente está montando o plano…")
     sa.executar(texto)
+
+
+def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
+    """Agente Executor: plano (só lendo) → seu ✅ → execução real → relatório."""
+    from . import executor
+    if not executor.disponivel():
+        telegram.enviar("⚠️ O Agente Executor precisa do Claude Code instalado e logado neste PC.")
+        return
+    telegram.enviar("🖐 Agente Executor: entendendo a ordem e conferindo o PC (só lendo, nada muda ainda)…")
+    plano, sessao = executor.planejar(ordem)
+    if executor.sem_acao(plano):
+        telegram.enviar(plano[:3900])
+        return
+    if not telegram.pedir_aprovacao(f"🖐 PLANO DO EXECUTOR\n\n{plano}"[:3800]):
+        telegram.enviar("❌ Cancelado. Nada foi alterado no seu PC.")
+        return
+    telegram.enviar("▶️ Executando… vou mandando o andamento.")
+    relatorio = executor.executar(ordem, plano, sessao=executor.ultima_sessao() if continuar else sessao,
+                                  progresso=telegram.enviar)
+    for i in range(0, len(relatorio), 3900):
+        telegram.enviar(("📋 RELATÓRIO DO EXECUTOR\n\n" if i == 0 else "") + relatorio[i:i + 3900])
 
 
 def rodar() -> None:
