@@ -37,6 +37,16 @@ habilidade = "conteudo/orientador-linkedin"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 acervo = true
 
+[agentes.analista_whatsapp]
+descricao = "Lê a conversa INTEIRA de um grupo de WhatsApp (exportada pelo celular) e entrega um relatório completo: assuntos, decisões, datas, links e pendências."
+habilidade = "pesquisa/relatorio-de-grupos"
+modelos = ["gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+
+[agentes.analista_telegram]
+descricao = "Lê o histórico completo de um grupo do Telegram (pela sua conta) e entrega um relatório completo; acompanha o grupo semanalmente."
+habilidade = "pesquisa/relatorio-de-grupos"
+modelos = ["gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+
 [agentes.roteirista]
 descricao = "Cria roteiro de vídeo para YouTube e Shorts."
 habilidade = "conteudo/roteiro-youtube"

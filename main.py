@@ -143,6 +143,12 @@ def main(argv: list[str] | None = None) -> int:
     c_rep.add_argument("alvo", nargs="?", default="")
     c_rep.add_argument("--limite", type=int, default=None)
     sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
+    c_gr = sub.add_parser("grupos", help="relatórios de grupos do WhatsApp e do Telegram")
+    c_gr.add_argument("acao", choices=["importar", "telegram", "relatorio", "pedido", "listar", "entrar-telegram",
+                                       "grupos-telegram", "acompanhar", "parar", "semanal"])
+    c_gr.add_argument("alvo", nargs="?", default="", help="arquivo exportado ou nome do grupo")
+    c_gr.add_argument("--assunto", default="", help="foco do relatório (opcional)")
+    c_gr.add_argument("--tudo", action="store_true", help="relatório do histórico inteiro, não só do que é novo")
     c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
     c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
@@ -180,6 +186,27 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "telegram":
         return configurar_telegram()
 
+    if a.comando == "grupos":
+        from superagente import grupos
+        if a.acao == "pedido" and a.alvo:
+            grupos.pedido(a.alvo, a.assunto, a.tudo)
+        elif a.acao in ("importar", "telegram", "relatorio"):
+            if not a.alvo:
+                print("Informe o arquivo exportado ou o nome do grupo.")
+                return 1
+            grupos.trabalhar(a.acao, a.alvo, a.assunto, a.tudo)
+        elif a.acao == "listar":
+            print(grupos.listar())
+        elif a.acao == "entrar-telegram":
+            grupos.entrar_telegram()
+        elif a.acao == "grupos-telegram":
+            print("\n".join(grupos.grupos_do_telegram()))
+        elif a.acao in ("acompanhar", "parar"):
+            print(f"{'🔁 Acompanhando' if a.acao == 'acompanhar' else '⏹ Parei de acompanhar'}: "
+                  f"{grupos.acompanhar(a.alvo, a.acao == 'acompanhar')}")
+        else:
+            grupos.semanal()
+        return 0
     if a.comando == "avisar":
         from superagente import telegram
         telegram.enviar(a.texto)

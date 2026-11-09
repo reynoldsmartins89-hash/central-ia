@@ -379,3 +379,62 @@ class TestConfirmacao(unittest.TestCase):
         for t in ("não", "vai chover amanhã?", "simples pergunta: o que é COF?",
                   "sim, mas antes me explique melhor o terceiro item da lista"):
             self.assertFalse(eh_confirmacao(t), t)
+
+
+class TestGrupos(unittest.TestCase):
+    ANDROID = ("09/11/2026 18:30 - Mensagens e ligações são protegidas com a criptografia de ponta a ponta.\n"
+               "09/11/2026 18:31 - Ana Souza: Bom dia, pessoal\n"
+               "09/11/2026 18:32 - Bruno: Reunião sexta às 19h\n"
+               "segunda linha da mensagem\n"
+               "09/11/2026 18:33 - Ana Souza: <Mídia oculta>\n"
+               "10/11/26 07:05 - Carla entrou usando o link de convite deste grupo\n"
+               "10/11/26 07:06 - Carla: Link: https://exemplo.com/a\n")
+    IOS = ("[09/11/2026, 18:31:02] Ana Souza: Olá\n"
+           "‎[09/11/2026, 18:31:40] Bruno: ‎imagem ocultada\n"
+           "[09/11/2026, 18:32:10] Bruno: Prova dia 20\n")
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import grupos
+        self.g = grupos
+        self.pasta = Path(tempfile.mkdtemp())
+        self.banco = grupos.BANCO
+        grupos.BANCO = self.pasta / "grupos.db"
+
+    def tearDown(self):
+        self.g.BANCO = self.banco
+        shutil.rmtree(self.pasta, ignore_errors=True)
+
+    def test_le_whatsapp_android_e_iphone(self):
+        msgs = self.g.ler_whatsapp(self.ANDROID)
+        self.assertEqual([a for _, a, _ in msgs], ["Ana Souza", "Bruno", "Carla"])
+        self.assertIn("segunda linha", msgs[1][2])            # mensagem com várias linhas
+        self.assertEqual(msgs[2][2], "Link: https://exemplo.com/a")
+        ios = self.g.ler_whatsapp(self.IOS)
+        self.assertEqual([t for _, _, t in ios], ["Olá", "Prova dia 20"])
+
+    def test_importar_duas_vezes_nao_duplica_e_le_zip(self):
+        import zipfile
+        arquivo = self.pasta / "Conversa do WhatsApp com Turma COF.txt"
+        arquivo.write_text(self.ANDROID, encoding="utf-8")
+        self.assertEqual(self.g.importar(arquivo), ("Turma COF", "whatsapp", 3, 3))
+        zipado = self.pasta / "20261109-190000_WhatsApp Chat with Turma COF.zip"
+        with zipfile.ZipFile(zipado, "w") as z:
+            z.writestr("WhatsApp Chat with Turma COF.txt", self.ANDROID + "11/11/2026 08:00 - Bruno: Novidade\n")
+        self.assertEqual(self.g.importar(zipado), ("Turma COF", "whatsapp", 1, 4))   # só a nova entra
+        self.assertEqual(self.g.achar_grupo("turma cof")[1], "Turma COF")
+        self.assertTrue(self.g.eh_exportacao(zipado.name))
+        self.assertFalse(self.g.eh_exportacao("contrato.pdf"))
+
+    def test_telegram_json_e_partes(self):
+        dados = {"name": "Grupo X", "messages": [
+            {"id": 1, "type": "message", "date": "2026-11-09T18:00:00", "from": "Ana", "text": "oi"},
+            {"id": 2, "type": "service", "date": "2026-11-09T18:01:00", "text": ""},
+            {"id": 3, "type": "message", "date": "2026-11-09T18:02:00", "from": "Bia",
+             "text": ["veja ", {"type": "link", "text": "https://x.org"}]}]}
+        msgs = self.g.ler_telegram_json(dados)
+        self.assertEqual([(a, t, i) for _, a, t, i in msgs], [("Ana", "oi", 1), ("Bia", "veja https://x.org", 3)])
+        partes = self.g._trechos("\n".join(["x" * 100] * 30), tamanho=1000)
+        self.assertEqual(len(partes), 4)
+        self.assertEqual(sum(p.count("\n") + 1 for p in partes), 30)   # nenhuma linha perdida

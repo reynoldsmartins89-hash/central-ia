@@ -47,6 +47,13 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 • /equipe <pedido> — quais agentes devem trabalhar juntos e por quê
 • /agentes — a equipe completa e o que cada um faz
 
+👥 GRUPOS (WhatsApp e Telegram)
+• WhatsApp: no grupo → ⋮ → Mais → Exportar conversa → SEM MÍDIA → mande o arquivo aqui
+   (na legenda, o assunto, se quiser) — a Central lê TUDO e devolve o relatório
+• /grupo <nome> [sobre <assunto>] — relatório do grupo (Telegram: lê pela sua conta)
+   ou escreva: "me dê o relatório do grupo X sobre Y"
+• /grupos — grupos guardados · /acompanhar <nome> — relatório toda semana · /parar_grupo <nome>
+
 🗃 ARQUIVOS (Drive e HDs)
 • /buscar <assunto> — onde estão seus arquivos sobre um assunto
 • /curador — resumo do catálogo dos seus discos
@@ -163,6 +170,10 @@ def tratar(texto: str) -> None:
         telegram.enviar(f"🗑 Esqueci: {removido}" if removido else "Use: /esquecer <número> (veja em /memoria)")
         return
 
+    if comando in ("/grupos", "/grupo", "/acompanhar", "/parar_grupo"):
+        _comando_de_grupo(comando, resto)
+        return
+
     if comando in ("/pc", "/executar", "/continuar"):
         if not resto:
             telegram.enviar("Use: /pc sua ordem — ex.: /pc liste os 10 maiores arquivos do HD E:")
@@ -182,6 +193,10 @@ def tratar(texto: str) -> None:
         proposta = memoria.ultima_fala_central()
         if eh_confirmacao(texto) and proposta:
             _fazer_o_proposto(sa, texto, proposta)
+            return
+        pedido_grupo = _pedido_de_grupo(texto)
+        if pedido_grupo:
+            _comando_de_grupo("/grupo", pedido_grupo)
             return
         modo = modo_da_mensagem(texto)
         if modo == "acao" and caixa_postal.papel() == "nuvem" and executor.classificar(texto) == "acao":
@@ -245,6 +260,53 @@ def _fazer_o_proposto(sa: Superagente, texto: str, proposta: str) -> None:
     else:
         sa.aprovar = lambda plano: telegram.pedir_aprovacao(formatar_plano(plano))   # sempre com botões
         _tarefa_em_equipe(sa, pedido)
+
+
+PARECE_GRUPO = re.compile(r"\bgrupo\b", re.IGNORECASE)
+PARECE_RELATORIO = re.compile(r"relat[óo]rio|resum|conversa|hist[óo]rico|o que (foi|est[áa]o?) (falado|dito|falando)",
+                              re.IGNORECASE)
+
+
+def _pedido_de_grupo(texto: str) -> str:
+    """'Vá até o grupo X e me dê um relatório sobre Y' → 'X sobre Y' (a IA rápida extrai o nome)."""
+    if not (PARECE_GRUPO.search(texto) and PARECE_RELATORIO.search(texto)):
+        return ""
+    try:
+        _, r = provedores.chamar_com_reserva(
+            ["groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest"],
+            "Extraia de um pedido em português o NOME do grupo (WhatsApp/Telegram) e o ASSUNTO pedido. Responda só "
+            'JSON: {"grupo": "...", "assunto": "..."}; assunto vazio se o pedido for tudo; grupo vazio se não houver.',
+            texto[-1000:], log=lambda *_: None)
+        import json
+        dados = json.loads(r[r.index("{"):r.rindex("}") + 1])
+    except Exception:  # noqa: BLE001
+        return ""
+    grupo = (dados.get("grupo") or "").strip()
+    assunto = (dados.get("assunto") or "").strip()
+    return f"{grupo} sobre {assunto}" if grupo and assunto else grupo
+
+
+def _comando_de_grupo(comando: str, resto: str) -> None:
+    from . import grupos
+    if comando == "/grupos":
+        telegram.enviar(grupos.comando("listar")[:3800] or "Nenhum grupo ainda.")
+        return
+    if not resto:
+        telegram.enviar("Use: /grupo <nome do grupo> [sobre <assunto>] — ex.: /grupo Turma COF sobre provas\n"
+                        "WhatsApp: exporte a conversa (⋮ → Mais → Exportar conversa → sem mídia) e mande aqui.")
+        return
+    if comando in ("/acompanhar", "/parar_grupo"):
+        acao = "acompanhar" if comando == "/acompanhar" else "parar"
+        telegram.enviar(grupos.comando(acao, resto) + ("\nRelatório toda semana (domingo à noite)."
+                                                       if acao == "acompanhar" else ""))
+        return
+    tudo = bool(re.search(r"\b(tudo|completo|inteiro|todo o hist[óo]rico)\b", resto, re.IGNORECASE))
+    partes =re.split(r"\s+sobre\s+", resto, maxsplit=1, flags=re.IGNORECASE)
+    nome, assunto = partes[0].strip(), (partes[1].strip() if len(partes) > 1 else "")
+    nome = re.sub(r"\s*\b(tudo|completo|inteiro)\b\s*", " ", nome, flags=re.IGNORECASE).strip()
+    telegram.enviar(f"👥 Vou ao grupo '{nome}'{' (assunto: ' + assunto + ')' if assunto else ''}: leio tudo e te "
+                    "mando o relatório aqui. Grupos grandes levam alguns minutos.")
+    grupos.em_segundo_plano("pedido", nome, assunto, tudo)
 
 
 def modo_da_mensagem(texto: str) -> str:
@@ -435,7 +497,15 @@ def rodar() -> None:
                 except Exception:  # noqa: BLE001
                     pass
             try:
-                from . import midia
+                from . import grupos, midia
+                doc = msg.get("document") or {}
+                if doc and grupos.eh_exportacao(doc.get("file_name") or ""):
+                    # conversa exportada do WhatsApp/Telegram: o Agente de Grupos lê tudo e faz o relatório
+                    telegram.enviar("👥 Recebi a conversa do grupo. Vou ler TUDO e te mando o relatório aqui "
+                                    "(grupos grandes levam alguns minutos).")
+                    arquivo = midia.baixar(doc["file_id"], doc["file_name"])
+                    grupos.em_segundo_plano("importar", str(arquivo), (msg.get("caption") or "").strip())
+                    continue
                 texto = midia.entrada(msg, avisar=telegram.enviar)
                 if not texto:
                     continue
