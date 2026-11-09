@@ -132,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     c_drv.add_argument("--minutos", type=float, default=None)
     c_drv.add_argument("--limite", type=int, default=None)
     c_fot = sub.add_parser("fotos", help="envia fotos/vídeos bons do HD para o Google Fotos")
-    c_fot.add_argument("acao", choices=["conectar", "enviar"])
+    c_fot.add_argument("acao", choices=["conectar", "enviar", "recuperadas"])
     c_fot.add_argument("pasta", nargs="?", default="")
     c_dup = sub.add_parser("duplicados", help="encontra cópias idênticas e as separa (com seu consentimento)")
     c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar", "conferir", "apagar"])
@@ -245,6 +245,8 @@ def main(argv: list[str] | None = None) -> int:
                 import subprocess
                 subprocess.run(fotos.comando_conexao(), stdout=subprocess.DEVNULL)  # não exibe a chave de acesso
             print("✅ Google Fotos conectado." if fotos.configurado() else "⚠ Não conectou; tente de novo.")
+        elif a.acao == "recuperadas":
+            fotos.enviar_recuperadas(tamanho=a.pasta or "foto")
         elif not a.pasta:
             print('Informe a pasta, ex.: fotos enviar "E:/Fotos"')
             return 1

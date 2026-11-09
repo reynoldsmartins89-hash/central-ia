@@ -66,3 +66,33 @@ def enviar(pasta: str | Path, album: str = ALBUM_PADRAO, log=print) -> int:
         os.unlink(lista.name)
     log(f"✅ Envio concluído. Abra photos.google.com → Álbuns → '{album}'.")
     return len(arquivos)
+
+
+def enviar_recuperadas(album: str = "Fotos recuperadas (Central IA)", tamanho: str = "foto", log=print) -> int:
+    """Envia as fotos que o Reparador garimpou de arquivos ilegíveis.
+    tamanho='foto' → só as de 400 px ou mais; 'tudo' → inclui as miniaturas."""
+    con = _conectar()
+    filtro = "detalhe LIKE 'foto %'" if tamanho == "foto" else "(detalhe LIKE 'foto %' OR detalhe LIKE 'miniatura %')"
+    destinos = [d for (d,) in con.execute(f"SELECT destino FROM reparos WHERE situacao = 'reparado' AND {filtro} "
+                                          "AND destino IS NOT NULL").fetchall()]
+    con.close()
+    arquivos = [Path(d) for d in destinos if d and Path(d).exists()]
+    if not arquivos:
+        log("Nenhuma foto recuperada encontrada.")
+        return 0
+    total = sum(a.stat().st_size for a in arquivos)
+    log(f"📸 {len(arquivos):,} fotos recuperadas ({total / 1e9:.2f} GB) → Google Fotos, álbum '{album}'")
+    por_pasta: dict[Path, list[str]] = {}
+    for a in arquivos:   # envia pasta por pasta para cair tudo num ÚNICO álbum (sem subálbuns)
+        por_pasta.setdefault(a.parent, []).append(a.name)
+    for n, (pasta, nomes) in enumerate(por_pasta.items(), 1):
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as lista:
+            lista.write("\n".join(nomes))
+        try:
+            _rodar("copy", str(pasta), f"{REMOTO}:album/{album}", "--files-from", lista.name,
+                   "--transfers", "4", "--retries", "5", "--low-level-retries", "20", timeout=None)
+        finally:
+            os.unlink(lista.name)
+        log(f"   pasta {n}/{len(por_pasta)} enviada ({len(nomes)} fotos)")
+    log(f"✅ Enviadas. Abra photos.google.com → Álbuns → '{album}'.")
+    return len(arquivos)
