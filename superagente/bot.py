@@ -26,6 +26,8 @@ Comandos:
 /conteudo <tema> — pacote completo: dossiê, artigo-mãe, revisão, redes sociais e roteiro de YouTube
 /equipe <pedido> — o secretário recomenda quais agentes usar (sem executar)
 /rapido <pergunta> — resposta direta, sem plano
+/buscar <termo> — onde estão seus arquivos sobre um assunto (Drive e HDs)
+/curador — resumo do catálogo dos seus discos
 /agentes — ver a equipe
 /status — ver quais IAs estão funcionando
 /ajuda — esta mensagem
@@ -68,6 +70,17 @@ def tratar(texto: str) -> None:
         plano = Superagente(log=print).planejar(resto)
         telegram.enviar(formatar_plano(plano, "🗂 Equipe recomendada")
                         + "\n\nNada foi executado. Para rodar, mande o pedido normalmente (sem /equipe).")
+        return
+    if comando == "/buscar":
+        from . import curador
+        achados = curador.buscar(resto)
+        telegram.enviar(("🔎 Encontrei nos seus discos:\n" + "\n".join(
+            f"• {c} ({t / 1e6:.1f} MB)" for c, t in achados)) if achados else
+            "Nada encontrado no catálogo (os discos já foram catalogados? /curador)")
+        return
+    if comando == "/curador":
+        from . import curador
+        telegram.enviar("🗃 Catálogo do curador:\n" + curador.resumo())
         return
     if comando == "/rapido":
         if not resto:

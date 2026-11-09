@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 import sys
 
 from superagente import habilidades, provedores, telegram
@@ -120,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("bot", help="liga o bot: comande a Central pelo Telegram")
     c_idx = sub.add_parser("indexar", help="indexa a biblioteca de um agente de conhecimento (ou todos)")
     c_idx.add_argument("agente", nargs="?", default="todos")
+    c_cur = sub.add_parser("curador", help="cataloga, classifica e reorganiza arquivos (com seu consentimento)")
+    c_cur.add_argument("acao", choices=["catalogar", "resumo", "buscar", "classificar", "propostas",
+                                         "aplicar", "desfazer"])
+    c_cur.add_argument("alvo", nargs="?", default="", help="pasta/disco (ou o termo, em 'buscar')")
+    c_cur.add_argument("--quantidade", type=int, default=50, help="tamanho do lote (classificar/aplicar)")
 
     c = sub.add_parser("perguntar", help="fala direto com um agente")
     c.add_argument("agente")
@@ -143,6 +149,42 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "telegram":
         return configurar_telegram()
+
+    if a.comando == "curador":
+        from superagente import curador
+        alvo = a.alvo or os.getenv("CURADOR_RAIZ", "")
+        if a.acao == "resumo":
+            print(curador.resumo(alvo or None))
+        elif a.acao == "buscar":
+            for caminho, tamanho in curador.buscar(a.alvo):
+                print(f"{tamanho / 1e6:>9.1f} MB  {caminho}")
+        elif not alvo:
+            print("Informe a pasta ou disco, ex.: curador catalogar \"G:\\Meu Drive\"")
+            return 1
+        elif a.acao == "catalogar":
+            curador.catalogar(alvo)
+        elif a.acao == "classificar":
+            print(f"{curador.classificar(alvo, limite=a.quantidade)} arquivos classificados")
+        elif a.acao == "propostas":
+            print(f"{curador.propor(alvo)} propostas de movimento (nada foi movido). Exemplos:")
+            for de, para, tema in curador.listar_propostas(alvo):
+                print(f"• [{tema}]\n   de:   {de}\n   para: {para}")
+        elif a.acao == "aplicar":
+            exemplos = curador.listar_propostas(alvo, a.quantidade)
+            if not exemplos:
+                print("Nenhuma proposta. Rode antes: classificar e propostas.")
+                return 0
+            texto = f"📦 Curador quer mover {len(exemplos)} arquivos em {alvo}:\n" + "\n".join(
+                f"• {Path(de).name} → {tema}" for de, _, tema in exemplos[:15])
+            ok = telegram.pedir_aprovacao(texto) if telegram.configurado() else \
+                input(f"{texto}\n\nMover? [s/N] ").strip().lower() in ("s", "sim")
+            if ok:
+                curador.aplicar(alvo, a.quantidade)
+            else:
+                print("Nada foi movido.")
+        elif a.acao == "desfazer":
+            curador.desfazer()
+        return 0
 
     if a.comando == "indexar":
         from superagente import conhecimento

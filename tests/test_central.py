@@ -89,6 +89,30 @@ class TestCentral(unittest.TestCase):
             self.assertIn(f"agente{i}", ctx)
         self.assertLess(len(ctx), 40_000)
 
+    def test_curador_move_so_com_proposta_e_desfaz(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import curador
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp) / "drive"
+            (raiz / "bagunca").mkdir(parents=True)
+            arquivo = raiz / "bagunca" / "historia_de_roma.pdf"
+            arquivo.write_text("x")
+            curador.PASTA = Path(tmp) / "estado"
+            curador.CATALOGO = curador.PASTA / "catalogo.db"
+            curador.REGISTRO_MOVIMENTOS = curador.PASTA / "mov.jsonl"
+            self.assertEqual(curador.catalogar(raiz, log=lambda *_: None), 1)
+            con = curador._conectar()
+            con.execute("UPDATE arquivos SET tema='08. HISTÓRIA & BIOGRAFIAS', confianca=0.9, status='classificado'")
+            con.commit(); con.close()
+            self.assertTrue(arquivo.exists())                  # classificar não move nada
+            self.assertEqual(curador.propor(raiz), 1)
+            self.assertTrue(arquivo.exists())                  # propor também não
+            self.assertEqual(curador.aplicar(raiz, log=lambda *_: None), 1)
+            self.assertFalse(arquivo.exists())
+            self.assertEqual(curador.desfazer(log=lambda *_: None), 1)
+            self.assertTrue(arquivo.exists())                  # voltou ao lugar original
+
     def test_combinacoes_existem(self):
         from superagente.agentes import carregar_combinacoes
         combos = carregar_combinacoes()
