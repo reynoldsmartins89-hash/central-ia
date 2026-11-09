@@ -78,3 +78,84 @@ modelos = ["ollama:qwen3:4b"]
 descricao = "Responde tarefas gerais quando nenhum especialista se aplica."
 habilidade = "geral/generalista"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+
+# ============ Agentes de conhecimento (biblioteca no Google Drive) ============
+# privacidade = "local": só Ollama, nada sai do seu PC.
+# privacidade = "nuvem": Groq (não treina com seus dados) → Codex (sua assinatura) → Gemini → Ollama.
+
+[agentes.geopolitica]
+descricao = "Especialista em geopolítica fundamentado na sua biblioteca de cursos: relações internacionais, poder, conflitos e cenários."
+habilidade = "conhecimento/geopolitica"
+base = "G:/Meu Drive/Agente_Geopolitica"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.politica]
+descricao = "Especialista em ciência e filosofia política fundamentado na sua biblioteca: ideologias, instituições, teoria política."
+habilidade = "conhecimento/politica"
+base = "G:/Meu Drive/Agente_Politica"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.filosofia_catolica]
+descricao = "Especialista em filosofia e pensamento católico fundamentado na sua biblioteca: tradição, metafísica, ética e teologia."
+habilidade = "conhecimento/filosofia-catolica"
+base = "G:/Meu Drive/Agente_Filosofia_Catolica"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.cof]
+descricao = "Especialista no Curso Online de Filosofia (COF) e e-books relacionados da sua biblioteca: filosofia, autoeducação e cultura."
+habilidade = "conhecimento/cof"
+base = "G:/Meu Drive/Agente_COF"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.comunicacao]
+descricao = "Especialista em comunicação fundamentado na sua biblioteca: oratória, escrita, persuasão, storytelling e relacionamento."
+habilidade = "conhecimento/comunicacao"
+base = "G:/Meu Drive/Agente_Comunicacao"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.marketing_digital]
+descricao = "Especialista em marketing digital fundamentado na sua biblioteca: tráfego, conteúdo, funis, anúncios, lançamentos e vendas."
+habilidade = "conhecimento/marketing-digital"
+base = "G:/Meu Drive/Agente_Marketing_Digital"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.ciencia_de_dados]
+descricao = "Especialista em ciência de dados fundamentado na sua biblioteca: estatística, Python, machine learning e análise."
+habilidade = "conhecimento/ciencia-de-dados"
+base = "G:/Meu Drive/Agente_Ciencia_de_Dados"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.geoprocessamento]
+descricao = "Especialista em geoprocessamento fundamentado na sua biblioteca: SIG, QGIS, sensoriamento remoto, cartografia e análise espacial."
+habilidade = "conhecimento/geoprocessamento"
+base = "G:/Meu Drive/Agente_Geoprocessamento"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
+[agentes.cyberseguranca]
+descricao = "Especialista em cibersegurança DEFENSIVA fundamentado na sua biblioteca. Roda só no seu PC (privado)."
+habilidade = "conhecimento/cyberseguranca"
+base = "G:/Meu Drive/Agente_CyberSecurity"
+privacidade = "local"
+modelos = ["ollama:qwen3:4b"]
+
+[agentes.seguranca_publica]
+descricao = "Especialista em segurança pública fundamentado na sua biblioteca. Roda só no seu PC (privado)."
+habilidade = "conhecimento/seguranca-publica"
+base = "G:/Meu Drive/Agente_Seguranca_Publica"
+privacidade = "local"
+modelos = ["ollama:qwen3:4b"]
+
+[agentes.viver_de_estudo]
+descricao = "Especialista do curso Viver de Estudo da sua biblioteca: empreender com conteúdo, Instagram, anúncios e formalização (MEI, nota fiscal)."
+habilidade = "conhecimento/viver-de-estudo"
+base = "G:/Meu Drive/Agente_Viver_de_Estudo"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]

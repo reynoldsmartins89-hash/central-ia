@@ -56,6 +56,24 @@ class TestCentral(unittest.TestCase):
             from PIL import Image
             self.assertEqual(Image.open(laminas[0]).size, (1080, 1350))
 
+    def test_main_e_bot_compilam(self):
+        import importlib
+        importlib.import_module("main")
+        importlib.import_module("superagente.bot")
+
+    def test_biblioteca_indexa_e_busca(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import conhecimento
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "aula1.md").write_text(
+                "A geopolítica do Ártico envolve rotas marítimas e recursos naturais disputados.\n" * 3,
+                encoding="utf-8")
+            conhecimento.PASTA_INDICES = Path(tmp) / "indices"
+            conhecimento.indexar("teste", tmp, log=lambda *_: None)
+            trechos = conhecimento.buscar("teste", "Explique as rotas do Ártico")
+            self.assertEqual(trechos[0]["caminho"], "aula1.md")
+
     def test_superagente_sem_plano_valido_usa_generalista(self):
         sa = Superagente(forcar_modelo="eco:teste", log=lambda *_: None)
         self.assertEqual(sa.planejar("qualquer coisa")[0]["agente"], "generalista")

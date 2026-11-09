@@ -72,7 +72,7 @@ def indexar(agente: str, pasta: str | Path, log=print) -> dict:
     con = _conectar(agente)
     conhecidos = dict(con.execute("SELECT caminho, modificado FROM arquivos"))
     vistos, novos, ignorados, inicio = set(), 0, 0, time.time()
-    for n, arquivo in enumerate(p for p in pasta.rglob("*") if p.suffix.lower() in EXTENSOES), 1):
+    for n, arquivo in enumerate((p for p in pasta.rglob("*") if p.suffix.lower() in EXTENSOES), 1):
         chave = str(arquivo.relative_to(pasta))
         vistos.add(chave)
         try:

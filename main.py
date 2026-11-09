@@ -119,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("fluxos", help="lista os fluxos fixos")
     sub.add_parser("telegram", help="conecta o seu Telegram (descobre o chat id)")
     sub.add_parser("bot", help="liga o bot: comande a Central pelo Telegram")
+    c_idx = sub.add_parser("indexar", help="indexa a biblioteca de um agente de conhecimento (ou todos)")
+    c_idx.add_argument("agente", nargs="?", default="todos")
 
     c = sub.add_parser("perguntar", help="fala direto com um agente")
     c.add_argument("agente")
@@ -142,6 +144,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "telegram":
         return configurar_telegram()
+
+    if a.comando == "indexar":
+        from superagente import conhecimento
+        _, equipe = carregar_equipe()
+        alvos = [ag for ag in equipe.values() if ag.base and a.agente in ("todos", ag.nome)]
+        if not alvos:
+            print("Nenhum agente de conhecimento com esse nome.")
+            return 1
+        for ag in alvos:
+            try:
+                conhecimento.indexar(ag.nome, ag.base)
+            except FileNotFoundError as erro:
+                print(f"⚠ {ag.nome}: {erro}")
+        return 0
 
     if a.comando == "bot":
         from superagente import bot
@@ -187,8 +203,7 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except PlanoCancelado as aviso:
-        print(f"
-{aviso}")
+        print(f"\n{aviso}")
         sys.exit(0)
     except provedores.ErroProvedor as erro:
         print(f"\n❌ {erro}\nDica: escolha 'diagnóstico' no menu e confira o arquivo .env")
