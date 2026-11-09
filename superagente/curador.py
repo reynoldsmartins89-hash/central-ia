@@ -212,6 +212,30 @@ def _leitura_da_colecao(con: sqlite3.Connection, caminho: str) -> tuple[str, str
     return "", "sem texto legível — classificado pelo nome da pasta e dos arquivos"
 
 
+PASTAS_DA_CENTRAL = {"duplicados para revisar", "reparados pela central", "para apagar - revisar",
+                     "organizado pelo curador", "_central_ia_temp", "takeout"}
+
+
+def _protecao_da_central(caminho: str) -> str | None:
+    """Motivo para NUNCA mover: é (ou contém, ou está dentro de) a base de um agente, ou é pasta da Central."""
+    alvo = Path(caminho)
+    if alvo.name.lower() in PASTAS_DA_CENTRAL:
+        return "pasta da própria Central (mantida como está)"
+    try:
+        from .agentes import carregar_equipe
+        _, equipe = carregar_equipe()
+    except Exception:  # noqa: BLE001
+        return None
+    a = str(alvo).lower().replace("/", "\\").rstrip("\\")
+    for nome, ag in equipe.items():
+        if not ag.base:
+            continue
+        b = str(Path(ag.base)).lower().replace("/", "\\").rstrip("\\")
+        if a == b or b.startswith(a + "\\") or a.startswith(b + "\\"):
+            return f"base de conhecimento do agente {nome} (mover quebraria o agente)"
+    return None
+
+
 def identificar_colecoes(raiz: str | Path, profundidade: int = 1, log=print) -> int:
     """Agrupa o catálogo em coleções (pastas no nível `profundidade` abaixo da raiz) e marca
     como PROTEGIDAS as que parecem programas, códigos ou sistemas — essas nunca são movidas."""
@@ -239,6 +263,10 @@ def identificar_colecoes(raiz: str | Path, profundidade: int = 1, log=print) -> 
                 g["programa"] = f"contém programa ({ext})"
             elif pastas & PASTAS_DE_PROGRAMA:
                 g["programa"] = f"contém pasta de sistema ({sorted(pastas & PASTAS_DE_PROGRAMA)[0]})"
+    for chave, g in grupos.items():   # bases dos agentes e pastas da própria Central NUNCA saem do lugar
+        motivo = _protecao_da_central(chave)
+        if motivo:
+            g["programa"] = motivo
     for chave, g in grupos.items():
         con.execute("""INSERT INTO colecoes (caminho, raiz, arquivos, tamanho, amostra, protegida, motivo)
                        VALUES (?, ?, ?, ?, ?, ?, ?)
