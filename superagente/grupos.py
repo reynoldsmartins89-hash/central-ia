@@ -410,3 +410,24 @@ def comando(*args: str) -> str:
     r = subprocess.run([sys.executable, str(raiz / "main.py"), "grupos", *args], cwd=raiz, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=120)
     return (r.stdout or r.stderr).strip()
+
+
+def parece_conversa(caminho: str | Path) -> bool:
+    """Reconhece uma conversa exportada pelo CONTEÚDO (o nome do arquivo pode ter sido trocado)."""
+    caminho = Path(caminho)
+    try:
+        if caminho.suffix.lower() == ".zip":
+            with zipfile.ZipFile(caminho) as z:
+                txts = [n for n in z.namelist() if n.lower().endswith(".txt")]
+                if not txts:
+                    return False
+                inicio = z.read(txts[0])[:20000].decode("utf-8", "replace")
+        elif caminho.suffix.lower() == ".json":
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            return isinstance(dados, dict) and isinstance(dados.get("messages"), list)
+        else:
+            inicio = caminho.read_text(encoding="utf-8", errors="replace")[:20000]
+    except Exception:  # noqa: BLE001
+        return False
+    linhas = [l for l in inicio.replace("‎", "").splitlines() if l.strip()][:40]
+    return sum(bool(ANDROID.match(l) or IOS.match(l)) for l in linhas) >= max(3, len(linhas) // 3)

@@ -370,13 +370,18 @@ def _enviar_longo(texto: str) -> None:
 
 # o modelo que escreve de forma mais natural vem primeiro na conversa (os demais ficam de reserva);
 # agentes privados continuam só com IA local (o próprio agente filtra)
-MODELO_DA_CONVERSA = os.getenv("MODELO_DA_CONVERSA", "gemini:gemini-3.5-flash")
+# O que importa é a DENSIDADE da resposta, não a velocidade: no PC, o Claude (sua assinatura);
+# na nuvem (sem Claude), o Gemini. Os demais ficam de reserva.
+MODELOS_DA_CONVERSA = [m.strip() for m in os.getenv(
+    "MODELOS_DA_CONVERSA", "cli:claude,gemini:gemini-3.5-flash").split(",") if m.strip()]
 
 
 VOZ_DA_CONVERSA = """Você está numa CONVERSA de chat (Telegram) com o Reynolds — como o ChatGPT, o Claude ou o
 Gemini conversam: natural, humano, caloroso e inteligente. Regras desta conversa:
-- Escreva como uma pessoa que domina o assunto conversando: parágrafos curtos, linguagem simples e direta.
-- NADA de tabelas, títulos (#) ou "etapas | como aprovar". Listas só quando ajudarem de verdade (no máximo 5 itens).
+- PROFUNDIDADE acima de tudo: resolva o problema de verdade. Traga fundamentos, distinções, exemplos,
+  implicações e o "porquê" — como um especialista sério conversando, não um resumo raso.
+- Escreva em prosa bem organizada, como um mestre que domina o assunto: parágrafos claros, transições naturais.
+- NADA de tabelas ou "etapas | como aprovar". Títulos e listas só quando organizarem um conteúdo longo de verdade.
 - Negrito com moderação, só para o essencial. Nada de citações [n] a não ser que ele peça as fontes.
 - Não comece com "Entendi!", "Perfeito!", "Ótima pergunta" nem repita o pedido dele: vá direto ao conteúdo.
 - Use o que você sabe da conversa e do perfil dele; se fizer sentido, termine com UMA pergunta para continuar o papo.
@@ -397,7 +402,7 @@ def conversar(texto: str, especialista: bool = True) -> str:
         tarefa = (f"{VOZ_DA_CONVERSA}\n\n{contexto}\n\n## Mensagem atual do Reynolds\n{texto}\n\n"
                   "Responda à mensagem atual, usando a conversa acima para entender referências.")
         memoria.adicionar("voce", texto)
-        modelos = [MODELO_DA_CONVERSA] + [m for m in agente.modelos if m != MODELO_DA_CONVERSA]
+        modelos = MODELOS_DA_CONVERSA + [m for m in agente.modelos if m not in MODELOS_DA_CONVERSA]
         _, resposta = agente.executar(tarefa, modelos=modelos, log=lambda *_: None,
                                       consulta=f"{anterior} {texto}", conversa=True)
     memoria.adicionar("central", resposta)
@@ -544,13 +549,15 @@ def rodar() -> None:
             try:
                 from . import grupos, midia
                 doc = msg.get("document") or {}
-                if doc and grupos.eh_exportacao(doc.get("file_name") or ""):
-                    # conversa exportada do WhatsApp/Telegram: o Agente de Grupos lê tudo e faz o relatório
-                    telegram.enviar("👥 Recebi a conversa do grupo. Vou ler TUDO e te mando o relatório aqui "
-                                    "(grupos grandes levam alguns minutos).")
-                    arquivo = midia.baixar(doc["file_id"], doc["file_name"])
-                    grupos.em_segundo_plano("importar", str(arquivo), (msg.get("caption") or "").strip())
-                    continue
+                nome_doc = (doc.get("file_name") or "").lower()
+                if doc and (grupos.eh_exportacao(nome_doc) or nome_doc.endswith((".txt", ".zip", ".json"))):
+                    arquivo = midia.baixar(doc["file_id"], doc.get("file_name") or "conversa.txt")
+                    if grupos.eh_exportacao(nome_doc) or grupos.parece_conversa(arquivo):
+                        # conversa exportada do WhatsApp/Telegram: o Agente de Grupos lê tudo e faz o relatório
+                        telegram.enviar("👥 Recebi a conversa do grupo. Vou ler TUDO e te mando o relatório aqui "
+                                        "(grupos grandes levam alguns minutos).")
+                        grupos.em_segundo_plano("importar", str(arquivo), (msg.get("caption") or "").strip())
+                        continue
                 texto = midia.entrada(msg, avisar=telegram.enviar)
                 if not texto:
                     continue

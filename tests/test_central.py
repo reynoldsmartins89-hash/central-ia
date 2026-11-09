@@ -427,6 +427,18 @@ class TestGrupos(unittest.TestCase):
         self.assertTrue(self.g.eh_exportacao(zipado.name))
         self.assertFalse(self.g.eh_exportacao("contrato.pdf"))
 
+    def test_reconhece_conversa_pelo_conteudo(self):
+        renomeado = self.pasta / "arquivo qualquer.txt"
+        renomeado.write_text(self.ANDROID * 3, encoding="utf-8")
+        self.assertTrue(self.g.parece_conversa(renomeado))
+        comum = self.pasta / "anotacoes.txt"
+        comum.write_text("Lista de compras
+pão
+leite
+09/11/2026 reunião
+", encoding="utf-8")
+        self.assertFalse(self.g.parece_conversa(comum))
+
     def test_telegram_json_e_partes(self):
         dados = {"name": "Grupo X", "messages": [
             {"id": 1, "type": "message", "date": "2026-11-09T18:00:00", "from": "Ana", "text": "oi"},
