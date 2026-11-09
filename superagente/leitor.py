@@ -454,16 +454,18 @@ def _texto_completo(caminho: str) -> tuple[str, str]:
         return caminho, ""
 
 
-def completar_documentos(processos: int = 4, log=print) -> dict:
+def completar_documentos(processos: int = 4, log=print,
+                         extensoes: tuple[str, ...] = (".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".epub", ".odt")) -> dict:
     """Relê por INTEIRO os PDFs que o acervo guardou só pelo começo (antes eram lidas só 4 páginas).
     Retomável: os já completados ficam marcados como 'conteúdo (completo)'."""
     import concurrent.futures as cf
     con = _tabelas()
-    linhas = con.execute("""SELECT caminho, tipo, caracteres FROM leituras WHERE status = 'lido'
-                            AND metodo = 'conteúdo' AND lower(caminho) LIKE '%.pdf'""").fetchall()
+    linhas = [l for l in con.execute("""SELECT caminho, tipo, caracteres FROM leituras WHERE status = 'lido'
+                                         AND metodo = 'conteúdo'""").fetchall()
+              if Path(l[0]).suffix.lower() in extensoes]
     fila = [(c, t, n or 0) for c, t, n in linhas if Path(c).exists()]   # os de dentro de .zip/.rar ficam como estão
     info = {c: (t, n) for c, t, n in fila}
-    log(f"📚 {len(fila):,} PDFs para reler por inteiro ({len(linhas) - len(fila):,} dentro de compactados ou sumidos)")
+    log(f"📚 {len(fila):,} documentos para reler por inteiro ({len(linhas) - len(fila):,} dentro de compactados ou sumidos)")
     contagem = {"ampliados": 0, "iguais": 0, "falhas": 0}
     caracteres_novos, inicio = 0, time.time()
     with cf.ProcessPoolExecutor(processos) as pool:
@@ -490,6 +492,6 @@ def completar_documentos(processos: int = 4, log=print) -> dict:
                     f"+{caracteres_novos / 1e6:.0f} milhões de caracteres · {(time.time() - inicio) / 60:.0f} min")
     con.commit()
     con.close()
-    log(f"✅ PDFs completos: {contagem['ampliados']:,} ampliados, {contagem['iguais']:,} já estavam inteiros, "
+    log(f"✅ Documentos completos: {contagem['ampliados']:,} ampliados, {contagem['iguais']:,} já estavam inteiros, "
         f"{contagem['falhas']:,} sem texto · +{caracteres_novos / 1e6:.0f} milhões de caracteres no acervo")
     return contagem

@@ -92,7 +92,7 @@ def _zip(caminho: Path, ext: str) -> str:
                         if "_rels" not in n and any(n.startswith(a) or n.endswith(a) for a in alvos)
                         and not n.endswith("/")),
                        key=lambda n: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", n)])
-        for nome in nomes[:15]:
+        for nome in (nomes[:15] if LIMITE <= 3000 else nomes):   # texto inteiro: todos os slides/capítulos
             partes.append(_sem_tags(z.read(nome).decode("utf-8", errors="ignore")))
             if sum(map(len, partes)) > LIMITE * 2:
                 break
@@ -109,6 +109,15 @@ def _doc_antigo(caminho: Path) -> str:
     return texto
 
 
+OFFICE = {".docx", ".pptx", ".xlsx", ".xls"}
+
+
+def _markitdown(caminho: Path) -> str:
+    """Word, PowerPoint e Excel → Markdown limpo, com as tabelas (Microsoft MarkItDown)."""
+    from markitdown import MarkItDown
+    return MarkItDown(enable_plugins=False).convert(str(caminho)).text_content or ""
+
+
 def extrair(caminho: str | Path) -> tuple[str, str]:
     """Retorna (método, texto). método: 'conteúdo', 'sem texto', 'ilegível' ou 'erro: ...'."""
     caminho = Path(caminho)
@@ -123,6 +132,13 @@ def extrair(caminho: str | Path) -> tuple[str, str]:
         if ext == ".pdf":
             texto = _normalizar(_pdf(caminho))
             return ("conteúdo", texto) if len(texto) > 50 else ("ilegível", "PDF sem texto (provavelmente escaneado)")
+        if ext in OFFICE and LIMITE > 3000:   # texto inteiro: MarkItDown preserva tabelas e a ordem
+            try:
+                texto = _markitdown(caminho)
+                if texto.strip():
+                    return "conteúdo", texto[:LIMITE]
+            except Exception:  # noqa: BLE001 — cai no leitor simples abaixo
+                pass
         if ext in ZIP_XML:
             return "conteúdo", _normalizar(_zip(caminho, ext))
         if ext == ".doc":
