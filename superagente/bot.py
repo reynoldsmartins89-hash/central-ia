@@ -312,8 +312,11 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
 JANELA_PENDENTES = int(os.getenv("JANELA_PENDENTES_HORAS", "72")) * 3600
 
 
+TIPOS_ACEITOS = ("voice", "audio", "photo", "document", "video_note", "video")
+
+
 def _tem_conteudo(msg: dict) -> bool:
-    return bool((msg.get("text") or "").strip() or any(msg.get(k) for k in ("voice", "audio", "photo", "document")))
+    return bool((msg.get("text") or "").strip() or any(msg.get(k) for k in TIPOS_ACEITOS))
 
 
 def _pendentes_ao_ligar(meu_chat: str) -> int:
@@ -358,8 +361,13 @@ def rodar() -> None:
         for u in r.get("result", []):
             deslocamento = u["update_id"] + 1
             msg = u.get("message") or {}
-            if str(msg.get("chat", {}).get("id")) != meu_chat or not _tem_conteudo(msg):
-                continue  # ignora outras pessoas e mensagens vazias (figurinhas etc.)
+            if str(msg.get("chat", {}).get("id")) != meu_chat:
+                continue  # ignora outras pessoas
+            if not _tem_conteudo(msg):
+                if msg:   # figurinha, localização, contato…: avisa em vez de ficar em silêncio
+                    telegram.enviar("🤔 Esse tipo de mensagem eu ainda não entendo. Mande texto, áudio, "
+                                    "foto, vídeo ou documento.")
+                continue
             if time.time() - msg.get("date", time.time()) > JANELA_PENDENTES:
                 continue  # velha demais: o Telegram já teria descartado
             print(f"\n📩 {msg.get('text') or msg.get('caption') or '[áudio/foto/documento]'}")

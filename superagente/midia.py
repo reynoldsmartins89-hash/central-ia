@@ -75,8 +75,8 @@ def entrada(msg: dict, avisar=lambda _t: None) -> str | None:
     legenda = (msg.get("caption") or "").strip()
     if msg.get("text"):
         return msg["text"].strip()
-    if msg.get("voice") or msg.get("audio"):
-        midia = msg.get("voice") or msg["audio"]
+    if msg.get("voice") or msg.get("audio") or msg.get("video_note") or msg.get("video"):
+        midia = msg.get("voice") or msg.get("audio") or msg.get("video_note") or msg["video"]
         avisar("🎙 Ouvindo seu áudio…")
         arquivo = baixar(midia["file_id"], midia.get("file_name") or "audio.ogg")
         texto = transcrever(arquivo)
