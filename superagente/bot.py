@@ -520,7 +520,10 @@ def rodar() -> None:
         try:
             if papel == "pc_com_caixa" and time.time() - ultima_busca > caixa_postal.PC_AUSENTE_APOS:
                 caixa_postal.baixar_memoria()   # o PC dormiu: a nuvem pode ter conversado nesse meio-tempo
-            r = telegram.atualizacoes(deslocamento, 50 if papel == "sozinho" else 25)
+            if telegram.ADIADAS:   # mensagens que chegaram durante uma espera de aprovação vêm primeiro
+                r, telegram.ADIADAS[:] = list(telegram.ADIADAS), []
+            else:
+                r = telegram.atualizacoes(deslocamento, 50 if papel == "sozinho" else 25)
             ultima_busca = time.time()
         except KeyboardInterrupt:
             raise
@@ -550,7 +553,7 @@ def rodar() -> None:
                 from . import grupos, midia
                 doc = msg.get("document") or {}
                 nome_doc = (doc.get("file_name") or "").lower()
-                if doc and (grupos.eh_exportacao(nome_doc) or nome_doc.endswith((".txt", ".zip", ".json"))):
+                if doc and (grupos.eh_exportacao(nome_doc) or nome_doc.endswith((".txt", ".zip", ".json", ".html", ".htm"))):
                     arquivo = midia.baixar(doc["file_id"], doc.get("file_name") or "conversa.txt")
                     if grupos.eh_exportacao(nome_doc) or grupos.parece_conversa(arquivo):
                         # conversa exportada do WhatsApp/Telegram: o Agente de Grupos lê tudo e faz o relatório

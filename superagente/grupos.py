@@ -141,6 +141,33 @@ def ler_telegram_json(dados: dict) -> list[tuple[float, str, str, int]]:
     return saida
 
 
+def ler_telegram_html(texto: str) -> tuple[str, list[tuple[float, str, str]], list[str]]:
+    """Telegram Desktop → Exportar histórico → formato HTML (messages.html, messages2.html…).
+    Devolve (nome do grupo, mensagens, links citados)."""
+    import html as _html
+    nome = re.search(r'<div class="text bold">\s*(.*?)\s*</div>', texto, re.S)
+    mensagens, links, autor = [], [], "?"
+    for bloco in re.split(r'(?=<div class="message (?:default|service))', texto)[1:]:
+        if bloco.startswith('<div class="message service'):
+            continue
+        quem = re.search(r'<div class="from_name">\s*(.*?)\s*</div>', bloco, re.S)
+        if quem:   # mensagens seguidas do mesmo autor ("joined") não repetem o nome
+            autor = _html.unescape(re.sub(r"<[^>]+>", "", quem.group(1))).strip() or autor
+        data = re.search(r'title="(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})', bloco)
+        corpo = re.search(r'<div class="text">(.*?)</div>', bloco, re.S)
+        if not (data and corpo):
+            continue
+        achados = re.findall(r'href="(https?://[^"]+)"', corpo.group(1))
+        links += achados
+        conteudo = re.sub(r"<br\s*/?>", "\n", corpo.group(1))
+        conteudo = _html.unescape(re.sub(r"<[^>]+>", "", conteudo)).strip()
+        if conteudo:
+            d, m, a, h, mi = data.groups()
+            mensagens.append((_quando(d, m, a, h, mi), autor, conteudo))
+    titulo = _html.unescape(re.sub(r"<[^>]+>", "", nome.group(1))).strip() if nome else "Grupo do Telegram"
+    return titulo, mensagens, list(dict.fromkeys(links))
+
+
 def importar(caminho: str | Path, nome: str = "") -> tuple[str, str, int, int]:
     """Importa um arquivo exportado (WhatsApp .txt/.zip ou Telegram result.json). Devolve (grupo, origem, novas, total)."""
     caminho = Path(caminho)
@@ -151,6 +178,11 @@ def importar(caminho: str | Path, nome: str = "") -> tuple[str, str, int, int]:
                 raise ValueError("o .zip não tem a conversa (.txt). Exporte de novo, SEM MÍDIA.")
             texto = z.read(max(txts, key=lambda n: z.getinfo(n).file_size)).decode("utf-8", "replace")
         return _importar_whatsapp(texto, nome or _nome_whatsapp(caminho))
+    if caminho.suffix.lower() in (".html", ".htm"):
+        grupo, msgs, _ = ler_telegram_html(caminho.read_text(encoding="utf-8", errors="replace"))
+        grupo = nome or grupo
+        novas, total = guardar(grupo, "telegram", msgs)
+        return grupo, "telegram", novas, total
     if caminho.suffix.lower() == ".json":
         dados = json.loads(caminho.read_text(encoding="utf-8"))
         msgs = ler_telegram_json(dados)
@@ -171,7 +203,8 @@ def _importar_whatsapp(texto: str, grupo: str) -> tuple[str, str, int, int]:
 
 def eh_exportacao(nome_arquivo: str) -> bool:
     n = nome_arquivo.lower()
-    return ("whatsapp" in n and n.endswith((".txt", ".zip"))) or n.endswith("result.json")
+    return (("whatsapp" in n and n.endswith((".txt", ".zip"))) or n.endswith("result.json")
+            or bool(re.search(r"messages\d*\.html?$", n)))
 
 
 # ------------------------------------------------------------------ Telegram pela SUA conta (Telethon)
@@ -422,6 +455,8 @@ def parece_conversa(caminho: str | Path) -> bool:
                 if not txts:
                     return False
                 inicio = z.read(txts[0])[:20000].decode("utf-8", "replace")
+        elif caminho.suffix.lower() in (".html", ".htm"):
+            return 'class="message default' in caminho.read_text(encoding="utf-8", errors="replace")[:200000]
         elif caminho.suffix.lower() == ".json":
             dados = json.loads(caminho.read_text(encoding="utf-8"))
             return isinstance(dados, dict) and isinstance(dados.get("messages"), list)

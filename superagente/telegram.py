@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 
 LIMITE_TEXTO = 3800  # o Telegram aceita até 4096 caracteres por mensagem
+ADIADAS: list[dict] = []   # mensagens que chegaram enquanto um plano esperava aprovação: o bot atende em seguida
 
 
 def configurado() -> bool:
@@ -144,8 +145,11 @@ def pedir_aprovacao(texto: str, espera_max: int = 3600) -> bool:
         for u in atualizacoes(deslocamento, 30):
             deslocamento = u["update_id"] + 1
             if "message" in u:
-                enviar("⏳ Ainda estou esperando você aprovar ou rejeitar o plano acima.")
-                continue
+                # você seguiu conversando em vez de tocar no botão: o plano é cancelado e a sua nova
+                # mensagem é atendida normalmente (nunca mais "ainda estou esperando…" em série)
+                ADIADAS.append(u)
+                enviar("↩️ Deixei o plano acima de lado (nada foi feito) para atender a sua nova mensagem.")
+                return False
             cb = u.get("callback_query") or {}
             resposta, _, cod = (cb.get("data") or "").partition(":")
             if cod != codigo or str(cb.get("message", {}).get("chat", {}).get("id")) != os.getenv("TELEGRAM_CHAT_ID").strip():
