@@ -51,7 +51,8 @@ def _post(url: str, corpo: dict, cabecalhos: dict) -> dict:
     requisicao = urllib.request.Request(
         url,
         data=json.dumps(corpo).encode("utf-8"),
-        headers={"Content-Type": "application/json", **cabecalhos},
+        # User-Agent próprio: alguns provedores (ex.: Groq/Cloudflare) bloqueiam o padrão "Python-urllib"
+        headers={"Content-Type": "application/json", "User-Agent": "central-ia/0.1", **cabecalhos},
         method="POST",
     )
     for tentativa in range(len(ESPERAS_RETENTATIVA) + 1):

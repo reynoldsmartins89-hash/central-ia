@@ -11,33 +11,33 @@
 
 [superagente]
 habilidade = "geral/superagente"
-modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:llama-3.3-70b-versatile", "ollama:qwen3:4b"]
+modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
 
 [agentes.pesquisador]
 descricao = "Pesquisa um tema e monta um dossiê com fatos, dados e fontes."
 habilidade = "pesquisa/pesquisa-fontes"
-modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:llama-3.3-70b-versatile", "ollama:qwen3:4b"]
+modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
 
 [agentes.redator]
 descricao = "Escreve o artigo-mãe do blog a partir de um dossiê."
 habilidade = "conteudo/artigo-mae"
-modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:llama-3.3-70b-versatile", "ollama:qwen3:4b"]
+modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
 
 [agentes.social]
 descricao = "Adapta um texto para Substack, LinkedIn, X, Instagram, Facebook e Threads."
 habilidade = "conteudo/derivados-redes-sociais"
-modelos = ["groq:llama-3.3-70b-versatile", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 
 [agentes.roteirista]
 descricao = "Cria roteiro de vídeo para YouTube e Shorts."
 habilidade = "conteudo/roteiro-youtube"
-modelos = ["groq:llama-3.3-70b-versatile", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 
 [agentes.revisor]
 descricao = "Revisa criticamente um texto: fatos, lógica, clareza e afirmações sem fonte."
 habilidade = "pesquisa/revisao-critica"
 # Claude é ótimo revisor; só é usado se ANTHROPIC_API_KEY existir (API é cobrada à parte).
-modelos = ["anthropic:claude-sonnet-5-5", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:llama-3.3-70b-versatile"]
+modelos = ["anthropic:claude-sonnet-5-5", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b"]
 
 [agentes.analista]
 descricao = "Planeja e interpreta análises de dados e gera código Python de análise."
@@ -47,17 +47,17 @@ modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "deepse
 [agentes.gestor]
 descricao = "Transforma objetivos em plano de ação com etapas, prazos, riscos e KPIs."
 habilidade = "gestao/gestao-de-projetos"
-modelos = ["groq:llama-3.3-70b-versatile", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 
 [agentes.estrategista]
 descricao = "Analisa oportunidades de negócio, monetização, ofertas e canais."
 habilidade = "gestao/estrategia-de-negocios"
-modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:llama-3.3-70b-versatile", "ollama:qwen3:4b"]
+modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
 
 [agentes.programador]
 descricao = "Escreve e revisa código Python para automações e integrações."
 habilidade = "desenvolvimento/desenvolvimento-python"
-modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:llama-3.3-70b-versatile", "ollama:qwen3:4b"]
+modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
 
 [agentes.privado]
 descricao = "Processa conteúdo sensível SOMENTE no computador local (nada sai da máquina)."
@@ -67,4 +67,4 @@ modelos = ["ollama:qwen3:4b"]
 [agentes.generalista]
 descricao = "Responde tarefas gerais quando nenhum especialista se aplica."
 habilidade = "geral/generalista"
-modelos = ["groq:llama-3.3-70b-versatile", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]

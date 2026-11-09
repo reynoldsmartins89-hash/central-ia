@@ -106,7 +106,7 @@ Os resultados ficam em `resultados/<data>_<assunto>/`, um arquivo por etapa, mai
    [agentes.meu_agente]
    descricao = "Uma frase — o superagente usa isso para decidir quando chamá-lo."
    habilidade = "<categoria>/<nome>"
-   modelos = ["gemini:gemini-3.5-flash", "groq:llama-3.3-70b-versatile", "ollama:qwen3:4b"]
+   modelos = ["gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
    ```
 3. Valide: `python scripts/validar_habilidades.py` e `python -m unittest -v`
 
