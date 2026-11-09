@@ -29,12 +29,20 @@ Se quiser um especialista específico, mencione-o: “…use também o agente de
 | `/curador` | Resumo do catálogo (quantidade, tipos, situação) |
 | `/duplicados` | Cópias idênticas encontradas e espaço recuperável |
 | `/integridade` | Arquivos corrompidos, vazios ou com download incompleto |
+| `/leitura` | Quanto do acervo já foi lido/transcrito pelo Agente Leitor |
+| `/reparos` | O que o Agente Reparador recuperou (cópias em `REPARADOS PELA CENTRAL`) e o que não tem conserto |
 
 ### ⚙️ Sistema
 | Comando | O que faz |
 |---|---|
 | `/status` | Quais IAs estão funcionando agora |
+| `/vigia` | O que o Agente Vigia está mantendo ligado (bot, leitura, reparos) |
 | `/comandos` | Esta lista |
+
+## Ligado o tempo todo
+O **Agente Vigia** inicia junto com o Windows (atalho na pasta Inicializar). Ele liga o bot,
+mantém a leitura do acervo andando, religa o que cair e avisa você no Telegram.
+Não precisa abrir nada: é só mandar mensagem para o bot.
 
 ## No terminal (manutenção — feita pelo Claude Code/Copilot)
 
@@ -53,3 +61,5 @@ Se quiser um especialista específico, mencione-o: “…use também o agente de
 | `python main.py duplicados relatorio` | Relatório de duplicados |
 | `python main.py duplicados separar "E:\"` | Separa cópias para `DUPLICADOS PARA REVISAR`, após aprovação |
 | `python main.py integridade verificar "E:\"` | Procura arquivos corrompidos (só lê) |
+| `python main.py reparar executar "E:\"` | Agente Reparador: conserta numa CÓPIA, aponta falsos alarmes e procura cópias sãs |
+| `python main.py vigia` | Agente Vigia (liga sozinho com o Windows): mantém bot e leitura rodando e avisa falhas |

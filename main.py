@@ -127,13 +127,19 @@ def main(argv: list[str] | None = None) -> int:
     c_ler.add_argument("--minutos", type=float, default=None, help="duração máxima desta rodada")
     c_ler.add_argument("--limite", type=int, default=None, help="máximo de arquivos nesta rodada")
     c_drv = sub.add_parser("drive", help="Agente Drive: catálogo, duplicados e leitura pela API, sem baixar o Drive")
-    c_drv.add_argument("acao", choices=["conectar", "catalogar", "duplicados", "ler"])
+    c_drv.add_argument("acao", choices=["conectar", "catalogar", "duplicados", "separar", "ler"])
+    c_drv.add_argument("pasta", nargs="?", default="", help="em 'separar': só esta pasta do Drive (ex.: EBOOKS)")
     c_drv.add_argument("--minutos", type=float, default=None)
     c_drv.add_argument("--limite", type=int, default=None)
     c_dup = sub.add_parser("duplicados", help="encontra cópias idênticas e as separa (com seu consentimento)")
     c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar"])
     c_dup.add_argument("alvo", nargs="*", default=[], help="discos/pastas (padrão: todos os catalogados)")
     c_dup.add_argument("--quantidade", type=int, default=100)
+    c_rep = sub.add_parser("reparar", help="Agente Reparador: recupera arquivos danificados (sempre numa cópia)")
+    c_rep.add_argument("acao", choices=["executar", "relatorio"])
+    c_rep.add_argument("alvo", nargs="?", default="")
+    c_rep.add_argument("--limite", type=int, default=None)
+    sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
     c_int = sub.add_parser("integridade", help="encontra arquivos corrompidos ou incompletos (só lê)")
     c_int.add_argument("acao", choices=["verificar", "relatorio"])
     c_int.add_argument("alvo", nargs="?", default="")
@@ -166,6 +172,28 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "telegram":
         return configurar_telegram()
 
+    if a.comando == "vigia":
+        from superagente import vigia
+        vigia.rodar()
+        return 0
+
+    if a.comando == "reparar":
+        from superagente import reparador
+        if a.acao == "executar":
+            if not a.alvo:
+                print('Informe o disco, ex.: reparar executar "E:\\"')
+                return 1
+            reparador.reparar(a.alvo, a.limite)
+        print(reparador.relatorio(a.alvo or None))
+        return 0
+
+    if a.comando in ("ler", "drive") and (a.comando == "drive" and a.acao == "ler" or
+                                          a.comando == "ler" and a.alvo != "progresso"):
+        from superagente.vigia import travar
+        if not travar("leitura"):
+            print("📚 Uma leitura já está em andamento (o Vigia cuida dela). Acompanhe com: ler progresso")
+            return 0
+
     if a.comando == "ler":
         from superagente import leitor
         if a.alvo != "progresso":
@@ -185,6 +213,15 @@ def main(argv: list[str] | None = None) -> int:
             drive.catalogar()
         elif a.acao == "duplicados":
             print(drive.duplicados())
+        elif a.acao == "separar":
+            prefixo = a.pasta.strip("/\\") + "/" if a.pasta else ""
+            texto = (f"🗂 Mover as cópias repetidas de '{prefixo or 'todo o Drive'}' para "
+                     f"'{drive.PASTA_REPETIDOS}' no próprio Drive (nada é apagado; dá para desfazer)?")
+            if a.sim or (telegram.pedir_aprovacao(texto) if telegram.configurado() else
+                         input(texto + " [s/N] ").strip().lower() in ("s", "sim")):
+                drive.separar_duplicados(prefixo)
+            else:
+                print("Nada foi movido.")
         elif a.acao == "ler":
             drive.ler_tudo(a.limite, a.minutos)
         return 0
@@ -202,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
             texto = (f"🗂 Separar até {a.quantidade} cópias duplicadas de {a.alvo[0]} para a pasta "
                      f"'{duplicados.PASTA_QUARENTENA}' (nada é apagado; os originais ficam onde estão)?\n\n"
                      + duplicados.relatorio(5))
-            ok = telegram.pedir_aprovacao(texto) if telegram.configurado() else \
+            ok = a.sim or telegram.pedir_aprovacao(texto) if telegram.configurado() else a.sim or \
                 input(f"{texto}\n\nSeparar? [s/N] ").strip().lower() in ("s", "sim")
             if ok:
                 duplicados.separar(a.alvo[0], a.quantidade)
@@ -251,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             texto = f"📦 Curador quer mover {len(exemplos)} PASTAS inteiras em {alvo}:\n" + "\n".join(
                 f"• {Path(de).name} → {tema}" for de, _, tema in exemplos[:15])
-            ok = telegram.pedir_aprovacao(texto) if telegram.configurado() else \
+            ok = a.sim or telegram.pedir_aprovacao(texto) if telegram.configurado() else a.sim or \
                 input(f"{texto}\n\nMover? [s/N] ").strip().lower() in ("s", "sim")
             if ok:
                 curador.aplicar(alvo, a.quantidade)

@@ -31,6 +31,12 @@ habilidade = "conteudo/derivados-redes-sociais"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
 acervo = true
 
+[agentes.orientador_linkedin]
+descricao = "Mentor de LinkedIn: diagnóstico do perfil, posicionamento, calendário de conteúdo, análise de posts, networking e carreira."
+habilidade = "conteudo/orientador-linkedin"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+acervo = true
+
 [agentes.roteirista]
 descricao = "Cria roteiro de vídeo para YouTube e Shorts."
 habilidade = "conteudo/roteiro-youtube"
@@ -74,6 +80,11 @@ acervo = true
 descricao = "Escreve e revisa código Python para automações e integrações."
 habilidade = "desenvolvimento/desenvolvimento-python"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
+
+[agentes.orientador_github]
+descricao = "Mentor de GitHub para não programadores: repositórios, perfil e portfólio, README, segurança, Actions e colaboração, passo a passo."
+habilidade = "desenvolvimento/orientador-github"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
 
 [agentes.privado]
 descricao = "Processa conteúdo sensível SOMENTE no computador local (nada sai da máquina)."
@@ -172,7 +183,7 @@ modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "
 # Você pode criar novas: liste os agentes e descreva em que situação trabalham juntos.
 
 [combinacoes.conteudo_digital]
-agentes = ["marketing_digital", "comunicacao", "redator", "social", "revisor"]
+agentes = ["marketing_digital", "comunicacao", "redator", "social", "orientador_linkedin", "revisor"]
 quando = "criar, divulgar ou vender com conteúdo: posts, campanhas, newsletter, lançamentos, copy, presença nas redes"
 
 [combinacoes.negocio_digital]

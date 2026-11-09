@@ -48,6 +48,7 @@ class TestCentral(unittest.TestCase):
     def test_carrossel_monta_laminas(self):
         import tempfile
         from pathlib import Path
+        from pathlib import Path
         from superagente import carrossel
         texto = ('```json\n[{"lamina": 1, "titulo": "IA para pequenas empresas", "texto": ""},'
                  ' {"lamina": 2, "titulo": "Comece pelo atendimento", "texto": "Respostas automáticas no WhatsApp."}]\n```')
@@ -64,6 +65,7 @@ class TestCentral(unittest.TestCase):
 
     def test_biblioteca_indexa_e_busca(self):
         import tempfile
+        from pathlib import Path
         from pathlib import Path
         from superagente import conhecimento
         with tempfile.TemporaryDirectory() as tmp:
@@ -91,6 +93,7 @@ class TestCentral(unittest.TestCase):
 
     def test_curador_move_so_com_proposta_e_desfaz(self):
         import tempfile
+        from pathlib import Path
         from pathlib import Path
         from superagente import curador
         with tempfile.TemporaryDirectory() as tmp:
@@ -124,6 +127,7 @@ class TestCentral(unittest.TestCase):
     def test_duplicados_e_integridade(self):
         import tempfile
         from pathlib import Path
+        from pathlib import Path
         from superagente import curador, duplicados, integridade
         with tempfile.TemporaryDirectory() as tmp:
             raiz = Path(tmp) / "hd"
@@ -150,6 +154,7 @@ class TestCentral(unittest.TestCase):
 
     def test_leitor_le_documento_e_alimenta_o_acervo(self):
         import tempfile
+        from pathlib import Path
         from pathlib import Path
         from superagente import curador, leitor
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,3 +218,37 @@ class TestCentral(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReparadorEVigia(unittest.TestCase):
+    def test_tipo_real_pelo_conteudo(self):
+        from superagente.reparador import tipo_real
+        self.assertEqual(tipo_real(b"\x00\x00\x00 ftypisom" + b"\x00" * 20), ".mp4")
+        self.assertEqual(tipo_real(b"%PDF-1.7"), ".pdf")
+        self.assertEqual(tipo_real(b"Rar!\x1a\x07"), ".rar")
+        self.assertIsNone(tipo_real(b"\x137lixo aleatorio"))
+
+    def test_diagnostico_sem_tocar_no_original(self):
+        import tempfile
+        from pathlib import Path
+        from superagente.reparador import diagnosticar
+        with tempfile.TemporaryDirectory() as d:
+            zeros = Path(d) / "curso.rar"
+            zeros.write_bytes(b"\x00" * 200_000)
+            self.assertEqual(diagnosticar(zeros)[0], "perdido")
+            video = Path(d) / "aula.rar"
+            video.write_bytes(b"\x00\x00\x00 ftypisom" + b"\x01" * 5000)
+            self.assertEqual(diagnosticar(video)[0], "tipo_errado")
+            self.assertEqual(diagnosticar(Path(d) / "~$doc.docx")[0], "falso_alarme")
+            self.assertEqual(zeros.read_bytes(), b"\x00" * 200_000)
+
+    def test_vigia_reconhece_processo_vivo(self):
+        import os
+        from superagente.vigia import processo_vivo
+        self.assertTrue(processo_vivo(os.getpid()))
+        self.assertFalse(processo_vivo(-1))
+
+    def test_drive_caminho_local_troca_dois_pontos(self):
+        from superagente.drive import caminho_local
+        self.assertNotIn(":", str(caminho_local("EBOOKS/Maçonaria: História/x.pdf"))[2:])
+

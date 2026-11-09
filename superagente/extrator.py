@@ -51,6 +51,8 @@ def _normalizar(texto: str) -> str:
 def _pdf(caminho: Path) -> str:
     from pypdf import PdfReader
     leitor = PdfReader(str(caminho))
+    if leitor.is_encrypted:
+        leitor.decrypt("")   # PDF só "protegido contra cópia" (senha vazia) abre normalmente
     partes = []
     if leitor.metadata and leitor.metadata.title:
         partes.append(f"Título: {leitor.metadata.title}")

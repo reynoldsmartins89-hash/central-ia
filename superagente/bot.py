@@ -35,9 +35,11 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 • /duplicados — cópias idênticas encontradas e espaço recuperável
 • /integridade — arquivos corrompidos ou incompletos
 • /leitura — quanto do acervo já foi lido/transcrito pelo Agente Leitor
+• /reparos — o que o Agente Reparador recuperou (sempre em cópias)
 
 ⚙️ SISTEMA
 • /status — quais IAs estão funcionando agora
+• /vigia — o que o Agente Vigia está mantendo ligado
 • /comandos — esta lista
 
 🔒 Regra: nada é publicado, movido ou apagado sem o seu ✅ aqui no Telegram."""
@@ -100,6 +102,14 @@ def tratar(texto: str) -> None:
         from . import integridade
         telegram.enviar("🩺 Integridade dos arquivos:\n" + integridade.relatorio(exemplos=3))
         return
+    if comando == "/reparos":
+        from . import reparador
+        telegram.enviar(reparador.relatorio(exemplos=2)[:3900])
+        return
+    if comando == "/vigia":
+        from . import vigia
+        telegram.enviar(vigia.resumo())
+        return
     if comando == "/leitura":
         from . import leitor
         telegram.enviar(leitor.progresso())
@@ -139,6 +149,10 @@ def tratar(texto: str) -> None:
 def rodar() -> None:
     if not telegram.configurado():
         raise SystemExit("Telegram não configurado. Use o menu → 'Conectar o Telegram'.")
+    from .vigia import travar
+    if not travar("bot"):
+        print("🟢 O bot já está rodando (o Vigia mantém ele ligado). Nada a fazer.")
+        return
     meu_chat = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     deslocamento = telegram._ultimo_update() + 1  # ignora mensagens antigas
     telegram.enviar("🟢 Central de IA online. Mande sua tarefa! (/ajuda para exemplos)")

@@ -152,3 +152,64 @@ def ler_tudo(limite: int | None = None, minutos: float | None = None, log=print)
     con.close()
     log(f"✅ Drive: {lidos:,} fichas, {erros:,} com erro")
     return {"lidos": lidos, "erros": erros}
+
+
+MONTAGEM = os.getenv("DRIVE_PASTA_LOCAL", r"G:\Meu Drive")   # o Drive para computador
+PASTA_REPETIDOS = "DUPLICADOS PARA REVISAR"
+
+
+def caminho_local(caminho: str) -> Path:
+    """Caminho do Drive → caminho no G:. O Drive para computador troca : * ? " < > | por espaço."""
+    for proibido in ':*?"<>|':
+        caminho = caminho.replace(proibido, " ")
+    return Path(MONTAGEM) / Path(caminho)
+
+
+def _quem_fica(caminhos: list[str]) -> str:
+    """Mantém a cópia mais 'organizada': dentro das categorias numeradas, sem '(1)', caminho mais curto."""
+    import re
+    return min(caminhos, key=lambda c: (not re.search(r"/\d{2}\. ", "/" + c), bool(re.search(r"\(\d+\)\.\w+$", c)),
+                                        len(c)))
+
+
+def separar_duplicados(prefixo: str = "", log=print) -> dict:
+    """Move as CÓPIAS repetidas (mesmo MD5) para 'DUPLICADOS PARA REVISAR' no próprio Drive, pelo G:.
+    É um movimento dentro do Drive (nada é baixado nem apagado) e pode ser desfeito: curador desfazer."""
+    from .curador import REGISTRO_MOVIMENTOS, _livre
+    raiz = Path(MONTAGEM)
+    if not raiz.exists():
+        raise FileNotFoundError(f"{raiz} não encontrado: o Google Drive para computador está aberto?")
+    con = _tabela()
+    grupos = con.execute("""SELECT group_concat(caminho, char(10)) FROM drive WHERE md5 <> '' AND tamanho > 0
+                            AND caminho LIKE ? AND caminho NOT LIKE ? GROUP BY md5 HAVING count(*) > 1""",
+                         (prefixo + "%", PASTA_REPETIDOS + "/%")).fetchall()
+    lote = "drive-dup-" + time.strftime("%Y%m%d-%H%M%S")
+    movidos = nao_achados = espaco = 0
+    for (lista,) in grupos:
+        caminhos = lista.split("\n")
+        fica = _quem_fica(caminhos)
+        for c in caminhos:
+            if c == fica:
+                continue
+            origem = caminho_local(c)
+            if not origem.exists():
+                nao_achados += 1
+                continue
+            destino = _livre(caminho_local(f"{PASTA_REPETIDOS}/{c}"))
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            tamanho = origem.stat().st_size
+            shutil.move(str(origem), str(destino))
+            with open(REGISTRO_MOVIMENTOS, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"lote": lote, "de": str(origem), "para": str(destino), "fica": fica},
+                                   ensure_ascii=False) + "\n")
+            con.execute("UPDATE drive SET caminho = ? WHERE caminho = ?",
+                        (f"{PASTA_REPETIDOS}/{c}", c))
+            con.commit()
+            movidos += 1
+            espaco += tamanho
+            if movidos % 100 == 0:
+                log(f"   {movidos:,} cópias separadas…")
+    con.close()
+    log(f"✅ {movidos:,} cópias ({espaco / 1e9:.1f} GB) separadas em {raiz / PASTA_REPETIDOS} "
+        f"(lote {lote}); {nao_achados} não estavam mais no lugar. Para desfazer: curador desfazer")
+    return {"movidos": movidos, "gb": espaco / 1e9, "nao_achados": nao_achados, "lote": lote}
