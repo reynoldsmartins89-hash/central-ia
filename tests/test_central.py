@@ -148,6 +148,26 @@ class TestCentral(unittest.TestCase):
             self.assertEqual(integridade.verificar(raiz / "baixando.crdownload"), "download/cópia incompleto")
             self.assertIn("vídeo", integridade.verificar(raiz / "b" / "diferente.mp4"))
 
+    def test_leitor_le_documento_e_alimenta_o_acervo(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import curador, leitor
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp) / "hd"
+            raiz.mkdir()
+            (raiz / "aula sem nome claro.md").write_text(
+                "A batalha de Lepanto em 1571 reuniu a Liga Santa contra o Império Otomano.", encoding="utf-8")
+            curador.PASTA = Path(tmp) / "estado"
+            curador.CATALOGO = curador.PASTA / "catalogo.db"
+            leitor.PASTA_LEITURAS = Path(tmp) / "leituras"
+            self.assertEqual(leitor.tipo_de("x.mp4"), "audio/video")
+            self.assertEqual(leitor.tipo_de("foto.jpg"), "imagem")
+            self.assertIsNone(leitor.tipo_de("programa.dll"))
+            curador.catalogar(raiz, log=lambda *_: None)
+            self.assertEqual(leitor.processar(log=lambda *_: None)["lidos"], 1)
+            self.assertEqual(len(list(leitor.PASTA_LEITURAS.glob("*.md"))), 1)   # ficha .md criada
+            self.assertIn("Lepanto", leitor.buscar("batalha de Lepanto")[0]["texto"])
+
     def test_combinacoes_existem(self):
         from superagente.agentes import carregar_combinacoes
         combos = carregar_combinacoes()

@@ -34,6 +34,7 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 • /curador — resumo do catálogo dos seus discos
 • /duplicados — cópias idênticas encontradas e espaço recuperável
 • /integridade — arquivos corrompidos ou incompletos
+• /leitura — quanto do acervo já foi lido/transcrito pelo Agente Leitor
 
 ⚙️ SISTEMA
 • /status — quais IAs estão funcionando agora
@@ -98,6 +99,10 @@ def tratar(texto: str) -> None:
     if comando == "/integridade":
         from . import integridade
         telegram.enviar("🩺 Integridade dos arquivos:\n" + integridade.relatorio(exemplos=3))
+        return
+    if comando == "/leitura":
+        from . import leitor
+        telegram.enviar(leitor.progresso())
         return
     if comando in ("/comandos", "/menu"):
         telegram.enviar(COMANDOS)

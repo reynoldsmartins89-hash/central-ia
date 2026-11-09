@@ -121,6 +121,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("bot", help="liga o bot: comande a Central pelo Telegram")
     c_idx = sub.add_parser("indexar", help="indexa a biblioteca de um agente de conhecimento (ou todos)")
     c_idx.add_argument("agente", nargs="?", default="todos")
+    c_ler = sub.add_parser("ler", help="Agente Leitor: transcreve/lê vídeos, áudios, imagens e documentos para .md")
+    c_ler.add_argument("alvo", nargs="?", default="", help="disco/pasta catalogado, ou 'progresso'")
+    c_ler.add_argument("--tipos", nargs="*", choices=["documento", "imagem", "audio/video"], default=None)
+    c_ler.add_argument("--minutos", type=float, default=None, help="duração máxima desta rodada")
+    c_ler.add_argument("--limite", type=int, default=None, help="máximo de arquivos nesta rodada")
+    c_drv = sub.add_parser("drive", help="Agente Drive: catálogo, duplicados e leitura pela API, sem baixar o Drive")
+    c_drv.add_argument("acao", choices=["conectar", "catalogar", "duplicados", "ler"])
+    c_drv.add_argument("--minutos", type=float, default=None)
+    c_drv.add_argument("--limite", type=int, default=None)
     c_dup = sub.add_parser("duplicados", help="encontra cópias idênticas e as separa (com seu consentimento)")
     c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar"])
     c_dup.add_argument("alvo", nargs="*", default=[], help="discos/pastas (padrão: todos os catalogados)")
@@ -156,6 +165,25 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "telegram":
         return configurar_telegram()
+
+    if a.comando == "ler":
+        from superagente import leitor
+        if a.alvo != "progresso":
+            leitor.processar(a.alvo or None, a.tipos, a.limite, a.minutos)
+        print(leitor.progresso())
+        return 0
+
+    if a.comando == "drive":
+        from superagente import drive
+        if a.acao == "conectar":
+            print(drive.conectar())
+        elif a.acao == "catalogar":
+            drive.catalogar()
+        elif a.acao == "duplicados":
+            print(drive.duplicados())
+        elif a.acao == "ler":
+            drive.ler_tudo(a.limite, a.minutos)
+        return 0
 
     if a.comando == "duplicados":
         from superagente import duplicados

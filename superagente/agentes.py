@@ -37,6 +37,7 @@ class Agente:
     modelos: list[str] = field(default_factory=list)
     base: str = ""            # pasta da biblioteca (agentes de conhecimento)
     privacidade: str = "nuvem"  # "local" = só modelos no seu PC (Ollama); nada sai da máquina
+    acervo: bool = False        # consulta o acervo inteiro lido pelo Agente Leitor (Drive + HDs)
 
     def modelos_permitidos(self, modelos: list[str] | None = None) -> list[str]:
         lista = modelos or self.modelos
@@ -60,6 +61,16 @@ class Agente:
             else:
                 log(f"   📚 nada encontrado na biblioteca de {self.nome} (está indexada?)")
                 sistema += "\nNenhum trecho da biblioteca foi encontrado para esta tarefa: avise isso no início da resposta."
+        if self.acervo:
+            from . import conhecimento, leitor
+            achados = leitor.buscar(tarefa)
+            if achados:
+                log(f"   🗃 {len(achados)} materiais do seu acervo (Drive/HDs) relacionados")
+                mensagem = (conhecimento.como_contexto(achados).replace(
+                    "Trechos da sua biblioteca", "Materiais do seu acervo pessoal (Drive e HDs)")
+                    + f"\n\n{mensagem}")
+                sistema += ("\n\nVocê recebeu materiais do acervo pessoal do usuário: aproveite-os quando forem "
+                            "relevantes, cite-os como [n] e aponte se algum merece leitura completa.")
         if contexto:
             mensagem = f"## Contexto (resultados anteriores)\n{contexto}\n\n{mensagem}"
         return provedores.chamar_com_reserva(self.modelos_permitidos(modelos), sistema, mensagem, log=log)
@@ -87,7 +98,7 @@ def carregar_equipe(arquivo: Path = ARQUIVO_AGENTES) -> tuple[Agente, dict[str, 
     superagente = Agente("superagente", "Orquestrador", s["habilidade"], s["modelos"])
     equipe = {
         nome: Agente(nome, a.get("descricao", ""), a["habilidade"], a["modelos"],
-                     a.get("base", ""), a.get("privacidade", "nuvem"))
+                     a.get("base", ""), a.get("privacidade", "nuvem"), bool(a.get("acervo", False)))
         for nome, a in dados.get("agentes", {}).items()
     }
     return superagente, equipe

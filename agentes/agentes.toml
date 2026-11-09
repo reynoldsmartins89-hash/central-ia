@@ -17,21 +17,25 @@ modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:o
 descricao = "Pesquisa um tema e monta um dossiê com fatos, dados e fontes."
 habilidade = "pesquisa/pesquisa-fontes"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
+acervo = true
 
 [agentes.redator]
 descricao = "Escreve o artigo-mãe do blog a partir de um dossiê."
 habilidade = "conteudo/artigo-mae"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
+acervo = true
 
 [agentes.social]
 descricao = "Adapta um texto para Substack, LinkedIn, X, Instagram, Facebook e Threads."
 habilidade = "conteudo/derivados-redes-sociais"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+acervo = true
 
 [agentes.roteirista]
 descricao = "Cria roteiro de vídeo para YouTube e Shorts."
 habilidade = "conteudo/roteiro-youtube"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+acervo = true
 
 [agentes.diretor_de_arte]
 descricao = "Planeja as imagens de blog, Substack, LinkedIn e Instagram e as produz (banco de imagens ou IA)."
@@ -53,6 +57,7 @@ modelos = ["anthropic:claude-sonnet-5-5", "gemini:gemini-3.5-flash", "gemini:gem
 descricao = "Planeja e interpreta análises de dados e gera código Python de análise."
 habilidade = "dados/analise-de-dados"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "deepseek:deepseek-chat", "ollama:qwen3:4b"]
+acervo = true
 
 [agentes.gestor]
 descricao = "Transforma objetivos em plano de ação com etapas, prazos, riscos e KPIs."
@@ -63,6 +68,7 @@ modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini
 descricao = "Analisa oportunidades de negócio, monetização, ofertas e canais."
 habilidade = "gestao/estrategia-de-negocios"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]
+acervo = true
 
 [agentes.programador]
 descricao = "Escreve e revisa código Python para automações e integrações."
@@ -78,6 +84,7 @@ modelos = ["ollama:qwen3:4b"]
 descricao = "Responde tarefas gerais quando nenhum especialista se aplica."
 habilidade = "geral/generalista"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+acervo = true
 
 # ============ Agentes de conhecimento (biblioteca no Google Drive) ============
 # privacidade = "local": só Ollama, nada sai do seu PC.
