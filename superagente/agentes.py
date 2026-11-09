@@ -52,8 +52,10 @@ class Agente:
         sistema = f"{hab.como_prompt()}\n\n---\n{REGRAS_GERAIS}"
         mensagem = f"## Tarefa\n{tarefa}"
         if self.base:
-            from . import conhecimento
+            from . import conhecimento, leitor
             trechos = conhecimento.buscar(self.nome, tarefa)
+            # material que não é texto (áudio, vídeo, imagem, compactados) vem das fichas do Agente Leitor
+            trechos += leitor.buscar(tarefa, limite=max(2, 8 - len(trechos)), prefixo=self.base)
             if trechos:
                 log(f"   📚 {len(trechos)} trechos da biblioteca de {self.nome}")
                 mensagem = f"{conhecimento.como_contexto(trechos)}\n\n{mensagem}"

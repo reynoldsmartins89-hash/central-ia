@@ -33,7 +33,8 @@ AUDIO_VIDEO = {".mp3", ".opus", ".m4a", ".wav", ".ogg", ".flac", ".aac", ".wma",
 IMAGEM = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".heic"}
 MODELO_VISAO = os.getenv("MODELO_VISAO", "gemma3:4b")
 MODELO_WHISPER = os.getenv("WHISPER_MODELO", "small")   # tiny | base | small | medium | large-v3
-PRIORIDADE = {"documento": 1, "imagem": 2, "pdf escaneado": 3, "audio/video": 4}
+PRIORIDADE = {"documento": 1, "imagem": 2, "pdf escaneado": 3, "audio/video": 4, "compactado": 5}
+TAMANHO_MINIMO_IMAGEM = 30_000   # ignora ícones e miniaturas
 
 _whisper = None
 
@@ -66,6 +67,8 @@ def tipo_de(caminho: str, raiz: str | None = None) -> str | None:
             partes = ()
         if {x.lower() for x in partes} & PASTAS_DE_PROGRAMA:
             return None
+    if ext in COMPACTADOS or re.search(r"\.(r\d\d|\d{3})$", ext):
+        return "compactado" if eh_primeiro_volume(caminho) else None
     if ext in AUDIO_VIDEO:
         return "audio/video"
     if ext in IMAGEM:
@@ -88,13 +91,49 @@ def _transcrever(caminho: str) -> tuple[str, str]:
             _whisper = WhisperModel(MODELO_WHISPER, device="cpu", compute_type="int8")
             _whisper_dispositivo = "CPU"
         _whisper.dispositivo = _whisper_dispositivo  # type: ignore[attr-defined]
-    segmentos, info = _whisper.transcribe(caminho, language=None, vad_filter=True)
-    linhas = []
+    # multilingual=True: o idioma é detectado em CADA trecho — aulas que misturam
+    # português e inglês (ou qualquer par) são transcritas por inteiro, sem perder nada.
+    segmentos, info = _whisper.transcribe(caminho, language=None, multilingual=True, vad_filter=True)
+    linhas, por_idioma = [], {}
     for s in segmentos:
+        texto = s.text.strip()
+        if not texto:
+            continue
+        idioma = idioma_do_texto(texto) or info.language
         minuto, segundo = divmod(int(s.start), 60)
-        linhas.append(f"[{minuto:02d}:{segundo:02d}] {s.text.strip()}")
-    return (f"whisper-{MODELO_WHISPER} ({_whisper.dispositivo}, idioma {info.language}, "
+        linhas.append(f"[{minuto:02d}:{segundo:02d}] [{idioma}] {texto}")
+        por_idioma.setdefault(idioma, []).append(f"[{minuto:02d}:{segundo:02d}] {texto}")
+    global ultima_transcricao_por_idioma
+    ultima_transcricao_por_idioma = {i: "\n".join(t) for i, t in por_idioma.items() if len(t) >= 3}
+    idiomas = ", ".join(f"{i} ({len(t)} trechos)" for i, t in sorted(por_idioma.items(), key=lambda x: -len(x[1])))
+    return (f"whisper-{MODELO_WHISPER} multilíngue ({_whisper.dispositivo}; {idiomas}; "
             f"{info.duration / 60:.0f} min)"), "\n".join(linhas)
+
+
+ultima_transcricao_por_idioma: dict[str, str] = {}
+
+PALAVRAS_TIPICAS = {
+    "pt": {"que", "não", "é", "uma", "você", "para", "com", "isso", "está", "mais", "como", "muito", "então"},
+    "en": {"the", "is", "you", "and", "are", "what", "this", "it's", "i'm", "your", "with", "have", "do", "my"},
+    "es": {"el", "es", "usted", "una", "está", "qué", "muy", "pero", "los", "las", "y", "yo", "tú"},
+    "fr": {"le", "la", "est", "vous", "je", "et", "les", "des", "une", "c'est", "pas", "très", "nous"},
+    "it": {"il", "è", "che", "sono", "una", "non", "per", "della", "io", "lei", "molto", "anche"},
+    "de": {"der", "die", "das", "und", "ist", "ich", "sie", "nicht", "ein", "eine", "wir", "auch"},
+    "la": {"est", "et", "in", "non", "ad", "cum", "quod", "sunt", "deus", "enim", "sed", "esse"},
+}
+
+
+def idioma_do_texto(texto: str) -> str | None:
+    """Detecção leve do idioma de um trecho (alfabeto + palavras típicas)."""
+    for intervalo, codigo in ((r"[぀-ヿ]", "ja"), (r"[가-힯]", "ko"), (r"[一-鿿]", "zh"),
+                              (r"[؀-ۿ]", "ar"), (r"[֐-׿]", "he"), (r"[Ͱ-Ͽ]", "el"),
+                              (r"[Ѐ-ӿ]", "ru")):
+        if re.search(intervalo, texto):
+            return codigo
+    palavras = set(re.findall(r"[\w']+", texto.lower()))
+    pontos = {codigo: len(palavras & tipicas) for codigo, tipicas in PALAVRAS_TIPICAS.items()}
+    melhor = max(pontos, key=pontos.get)
+    return melhor if pontos[melhor] > 0 else None
 
 
 def _carregar_dlls_cuda() -> None:
@@ -175,11 +214,11 @@ def _extrair_tudo(caminho: str) -> str:
 
 
 # ------------------------------------------------------------------ fichas e índice
-def _salvar_ficha(caminho: str, tipo: str, metodo: str, texto: str) -> Path:
+def _salvar_ficha(caminho: str, tipo: str, metodo: str, texto: str, sufixo: str = "") -> Path:
     PASTA_LEITURAS.mkdir(parents=True, exist_ok=True)
     nome = re.sub(r'[\\/:*?"<>|#^\[\]]+', " ", Path(caminho).stem)[:80].strip()
     codigo = hashlib.sha1(caminho.encode()).hexdigest()[:8]
-    ficha = PASTA_LEITURAS / f"{nome} [{codigo}].md"
+    ficha = PASTA_LEITURAS / f"{nome} [{codigo}]{(' ' + sufixo) if sufixo else ''}.md"
     ficha.write_text(
         "---\n"
         f"origem: {json.dumps(caminho, ensure_ascii=False)}\n"
@@ -205,19 +244,103 @@ def _indexar(con, caminho: str, tipo: str, texto: str) -> None:
                     ((t, titulo, caminho, tipo) for t in trechos if len(t.strip()) > 40))
 
 
+def ler_e_registrar(con, origem: str, arquivo: str) -> int:
+    """Lê `arquivo` (pode ser um temporário) e registra tudo sob o nome `origem`.
+    Para áudios com mais de um idioma, grava também uma ficha por idioma. Retorna nº de fichas."""
+    global ultima_transcricao_por_idioma
+    ultima_transcricao_por_idioma = {}
+    inicio = time.time()
+    tipo, metodo, texto = ler(arquivo)
+    if tipo == "documento":
+        texto = _extrair_tudo(arquivo) or texto
+    ficha = _salvar_ficha(origem, tipo, metodo, texto)
+    _indexar(con, origem, tipo, texto)
+    fichas = 1
+    if len(ultima_transcricao_por_idioma) > 1:          # nada se perde: um arquivo por idioma também
+        for idioma, parte in ultima_transcricao_por_idioma.items():
+            _salvar_ficha(origem, tipo, f"{metodo} — somente [{idioma}]", parte, sufixo=idioma)
+            fichas += 1
+    con.execute("INSERT OR REPLACE INTO leituras VALUES (?, ?, ?, 'lido', ?, ?, ?, ?, NULL)",
+                (origem, tipo, metodo, str(ficha), len(texto), time.time() - inicio,
+                 datetime.now().isoformat(timespec="minutes")))
+    return fichas
+
+
+# ------------------------------------------------------------------ compactados (.rar .zip .7z .001)
+COMPACTADOS = {".rar", ".zip", ".7z", ".001", ".tar", ".gz"}
+
+
+def _sete_zip() -> str | None:
+    import shutil as _sh
+    for candidato in (r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files (x86)\7-Zip\7z.exe"):
+        if Path(candidato).exists():
+            return candidato
+    return _sh.which("7z")
+
+
+def eh_primeiro_volume(caminho: str) -> bool:
+    nome = Path(caminho).name.lower()
+    if re.search(r"\.part0*([2-9]|\d{2,})\.rar$", nome):     # .part2.rar, .part10.rar…
+        return False
+    if re.search(r"\.(r\d\d|\d{3})$", nome) and not nome.endswith(".001"):   # .r00, .002…
+        return False
+    return Path(nome).suffix in COMPACTADOS
+
+
+def _ler_compactado(con, caminho: str, log=print) -> int:
+    """Extrai para uma pasta TEMPORÁRIA no mesmo disco, lê cada arquivo de dentro e apaga tudo."""
+    import shutil as _sh
+    import subprocess
+    sete = _sete_zip()
+    if not sete:
+        raise RuntimeError("7-Zip não instalado")
+    origem_base = Path(caminho)
+    volumes = [p for p in origem_base.parent.glob(re.sub(r"(\.part0*1\.rar|\.001)$", "", origem_base.name) + "*")]
+    tamanho = sum(p.stat().st_size for p in volumes) or origem_base.stat().st_size
+    temporaria = Path(origem_base.anchor) / "_central_ia_temp" / hashlib.sha1(caminho.encode()).hexdigest()[:10]
+    if _sh.disk_usage(origem_base.anchor).free < tamanho * 1.3:
+        raise RuntimeError("espaço livre insuficiente para extrair temporariamente")
+    temporaria.mkdir(parents=True, exist_ok=True)
+    try:
+        r = subprocess.run([sete, "x", "-y", "-p-", f"-o{temporaria}", caminho],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode not in (0, 1):                   # 1 = avisos, mas extraiu
+            raise RuntimeError(f"7-Zip: {(r.stderr or r.stdout).strip().splitlines()[-1:]} ")
+        fichas = 0
+        for interno in sorted(p for p in temporaria.rglob("*") if p.is_file()):
+            relativo = interno.relative_to(temporaria).as_posix()
+            if not tipo_de(str(interno), str(temporaria)):
+                continue
+            try:
+                fichas += ler_e_registrar(con, f"{caminho}::{relativo}", str(interno))
+            except Exception as erro:  # noqa: BLE001
+                log(f"   ⚠ {relativo}: {str(erro)[:80]}")
+        con.execute("INSERT OR REPLACE INTO leituras VALUES (?, 'compactado', '7-Zip', 'lido', NULL, ?, 0, ?, NULL)",
+                    (caminho, fichas, datetime.now().isoformat(timespec="minutes")))
+        log(f"   📦 {origem_base.name}: {fichas} fichas de dentro do compactado")
+        return fichas
+    finally:
+        _sh.rmtree(temporaria, ignore_errors=True)       # nada fica ocupando espaço
+        try:
+            temporaria.parent.rmdir()                    # remove a pasta-mãe se ficou vazia
+        except OSError:
+            pass
+
+
 def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: int | None = None,
               minutos: float | None = None, log=print) -> dict:
     """Lê os arquivos ainda não lidos (prioridade: documentos → imagens → PDFs escaneados → áudio/vídeo).
     `minutos` limita o tempo desta rodada; rode de novo para continuar de onde parou."""
     con = _tabelas()
     filtro, args = "", []
-    if raiz:
+    if raiz:  # um disco ("E:\") ou qualquer pasta dentro dele ("E:\IDIOMAS")
         from .curador import _raiz
-        filtro, args = "AND a.raiz = ?", [str(_raiz(raiz))]
+        filtro, args = "AND a.caminho LIKE ?", [str(_raiz(raiz)).rstrip("\\/") + "\\%"]
     linhas = con.execute(f"""SELECT a.caminho, a.tamanho, a.raiz FROM arquivos a LEFT JOIN leituras l
                              ON l.caminho = a.caminho WHERE l.caminho IS NULL {filtro}""", args).fetchall()
     fila = [(c, t, tipo_de(c, r)) for c, t, r in linhas]
-    fila = [(c, t, tp) for c, t, tp in fila if tp and (not tipos or tp in tipos)]
+    fila = [(c, t, tp) for c, t, tp in fila if tp and (not tipos or tp in tipos)
+            and not (tp == "imagem" and (t or 0) < TAMANHO_MINIMO_IMAGEM)]
     fila.sort(key=lambda x: (PRIORIDADE.get(x[2], 9), x[1]))
     if limite:
         fila = fila[:limite]
@@ -230,15 +353,11 @@ def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: i
             break
         inicio = time.time()
         try:
-            tipo, metodo, texto = ler(caminho)
-            if tipo == "documento":
-                texto = _extrair_tudo(caminho) or texto
-            ficha = _salvar_ficha(caminho, tipo, metodo, texto)
-            _indexar(con, caminho, tipo, texto)
-            con.execute("INSERT OR REPLACE INTO leituras VALUES (?, ?, ?, 'lido', ?, ?, ?, ?, NULL)",
-                        (caminho, tipo, metodo, str(ficha), len(texto), time.time() - inicio,
-                         datetime.now().isoformat(timespec="minutes")))
-            contagem["lidos"] += 1
+            if _tipo == "compactado":
+                contagem["lidos"] += _ler_compactado(con, caminho, log)
+            else:
+                ler_e_registrar(con, caminho, caminho)
+                contagem["lidos"] += 1
         except Exception as erro:  # noqa: BLE001 — anota e segue; integridade investiga depois
             con.execute("INSERT OR REPLACE INTO leituras VALUES (?, ?, NULL, 'erro', NULL, 0, ?, ?, ?)",
                         (caminho, _tipo, time.time() - inicio, datetime.now().isoformat(timespec="minutes"),
@@ -271,17 +390,20 @@ def progresso() -> str:
     return "\n".join(linhas)
 
 
-def buscar(pergunta: str, limite: int = 6, max_caracteres: int = 9000) -> list[dict]:
-    """Busca no ACERVO INTEIRO (tudo que o leitor já leu) — usada pelos agentes."""
+def buscar(pergunta: str, limite: int = 6, max_caracteres: int = 9000, prefixo: str | None = None) -> list[dict]:
+    """Busca no ACERVO (tudo que o leitor já leu). `prefixo` restringe a uma pasta (ex.: E:\\IDIOMAS\\INGLÊS)."""
     palavras = {p for p in re.findall(r"\w{4,}", pergunta.lower())}
     if not palavras:
         return []
+    filtro, args = "", []
+    if prefixo:
+        filtro, args = "AND caminho LIKE ?", [str(Path(prefixo)).rstrip("\\/") + "%"]
     con = _tabelas()
     try:
-        linhas = con.execute("SELECT texto, titulo, caminho, tipo FROM acervo WHERE acervo MATCH ? "
+        linhas = con.execute(f"SELECT texto, titulo, caminho, tipo FROM acervo WHERE acervo MATCH ? {filtro} "
                              "ORDER BY bm25(acervo) LIMIT ?",
                              (" OR ".join(f'"{p}"' for p in sorted(palavras, key=len, reverse=True)[:15]),
-                              limite * 3)).fetchall()
+                              *args, limite * 3)).fetchall()
     except sqlite3.OperationalError:
         return []
     finally:

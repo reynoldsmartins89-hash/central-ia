@@ -194,3 +194,93 @@ quando = "mapas, dados espaciais, SIG, sensoriamento remoto, análises com Pytho
 [combinacoes.seguranca]
 agentes = ["seguranca_publica", "cyberseguranca", "politica", "gestor"]
 quando = "segurança pública, proteção de dados e sistemas, políticas e planos de segurança"
+
+# ============ Agentes de idioma (material em E:\IDIOMAS, lido pelo Agente Leitor) ============
+
+[agentes.ingles]
+descricao = "Professor de inglês: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de inglês."
+habilidade = "idiomas/professor-ingles"
+base = "E:/IDIOMAS/INGLÊS"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.espanhol]
+descricao = "Professor de espanhol: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de espanhol."
+habilidade = "idiomas/professor-espanhol"
+base = "E:/IDIOMAS/ESPANHOL"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.frances]
+descricao = "Professor de francês: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de francês."
+habilidade = "idiomas/professor-frances"
+base = "E:/IDIOMAS/FRANCÊS"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.italiano]
+descricao = "Professor de italiano: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de italiano."
+habilidade = "idiomas/professor-italiano"
+base = "E:/IDIOMAS/ITALIANO"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.alemao]
+descricao = "Professor de alemão: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de alemão."
+habilidade = "idiomas/professor-alemao"
+base = "E:/IDIOMAS/ALEMÃO"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.mandarim]
+descricao = "Professor de mandarim: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de mandarim."
+habilidade = "idiomas/professor-mandarim"
+base = "E:/IDIOMAS/MANDARIM"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.japones]
+descricao = "Professor de japonês: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de japonês."
+habilidade = "idiomas/professor-japones"
+base = "E:/IDIOMAS/JAPONÊS"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.coreano]
+descricao = "Professor de coreano: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de coreano."
+habilidade = "idiomas/professor-coreano"
+base = "E:/IDIOMAS/COREANO"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.latim]
+descricao = "Professor de latim: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de latim."
+habilidade = "idiomas/professor-latim"
+base = "E:/IDIOMAS/LATIM"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.grego]
+descricao = "Professor de grego: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de grego."
+habilidade = "idiomas/professor-grego"
+base = "E:/IDIOMAS/GREGO"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.hebraico]
+descricao = "Professor de hebraico: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de hebraico."
+habilidade = "idiomas/professor-hebraico"
+base = "E:/IDIOMAS/HEBRAICO"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.arabe]
+descricao = "Professor de árabe: aulas, exercícios, correção, tradução e plano de estudos com base no seu material de árabe."
+habilidade = "idiomas/professor-arabe"
+base = "E:/IDIOMAS/ÁRABE"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+
+[combinacoes.estudo_de_idiomas]
+agentes = ["ingles", "espanhol", "frances", "italiano", "alemao", "latim", "grego", "gestor"]
+quando = "aprender, revisar, traduzir ou praticar idiomas; plano de estudos; comparar idiomas (use só os idiomas pedidos)"

@@ -168,6 +168,38 @@ class TestCentral(unittest.TestCase):
             self.assertEqual(len(list(leitor.PASTA_LEITURAS.glob("*.md"))), 1)   # ficha .md criada
             self.assertIn("Lepanto", leitor.buscar("batalha de Lepanto")[0]["texto"])
 
+    def test_idioma_dos_trechos(self):
+        from superagente.leitor import idioma_do_texto, eh_primeiro_volume, tipo_de
+        self.assertEqual(idioma_do_texto("Where are you from? I'm from Brazil."), "en")
+        self.assertEqual(idioma_do_texto("Então você é do Brasil, que legal."), "pt")
+        self.assertEqual(idioma_do_texto("我是巴西人"), "zh")
+        self.assertEqual(idioma_do_texto("こんにちは"), "ja")
+        self.assertTrue(eh_primeiro_volume("curso.part1.rar"))
+        self.assertFalse(eh_primeiro_volume("curso.part2.rar"))
+        self.assertTrue(eh_primeiro_volume("latim.7z.001"))
+        self.assertIsNone(tipo_de("latim.7z.002"))
+        self.assertEqual(tipo_de("aulas.rar"), "compactado")
+
+    def test_leitor_abre_compactado(self):
+        import tempfile, zipfile
+        from pathlib import Path
+        from superagente import curador, leitor
+        if not leitor._sete_zip():
+            self.skipTest("7-Zip não instalado")
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp) / "hd"
+            raiz.mkdir()
+            with zipfile.ZipFile(raiz / "curso.zip", "w") as z:
+                z.writestr("modulo1/aula.md", "Declinações latinas: rosa, rosae, rosae, rosam, rosa.")
+            curador.PASTA = Path(tmp) / "estado"
+            curador.CATALOGO = curador.PASTA / "catalogo.db"
+            leitor.PASTA_LEITURAS = Path(tmp) / "leituras"
+            curador.catalogar(raiz, log=lambda *_: None)
+            leitor.processar(log=lambda *_: None)
+            achado = leitor.buscar("declinações latinas rosae")
+            self.assertTrue(achado and "::modulo1/aula.md" in achado[0]["caminho"])
+            self.assertFalse((raiz / "_central_ia_temp").exists() and any((raiz / "_central_ia_temp").iterdir()))
+
     def test_combinacoes_existem(self):
         from superagente.agentes import carregar_combinacoes
         combos = carregar_combinacoes()
