@@ -138,6 +138,8 @@ def tarefas_padrao() -> list[Tarefa]:
     from . import drive
     if drive.configurado():
         leitura.append(["drive", "ler"])
+    if os.getenv("CAIXA_POSTAL", "").strip():   # leva ao servidor da nuvem o que foi lido de novo
+        leitura.append(["caixa", "sincronizar"])
     return [Tarefa("bot", "o bot do Telegram", [["bot"]], repetir_a_cada=60),
             Tarefa("leitura", "a leitura do acervo (Agente Leitor/Reparador)", leitura,
                    repetir_a_cada=ESPERA_NOVA_LEITURA)]

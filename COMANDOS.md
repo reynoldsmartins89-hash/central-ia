@@ -66,11 +66,20 @@ O **Agente Vigia** inicia junto com o Windows (atalho na pasta Inicializar). Ele
 mantém a leitura do acervo andando, religa o que cair e avisa você no Telegram.
 Não precisa abrir nada: é só mandar mensagem para o bot.
 
-### 📬 Ordens com o PC desligado
-O bot atende ordens de até **72 horas** — mas o Telegram, sozinho, só guarda mensagens por **24 h**.
-Para valer as 72 h com o PC desligado, é preciso a caixa postal na nuvem (servidor sempre ligado). Quando o PC liga, o bot avisa
-"📬 Enquanto o PC estava desligado você mandou N ordens" e atende todas, na ordem
-(as que mexem no PC continuam pedindo o seu ✅).
+### ☁️ Servidor na nuvem (Oracle, grátis) — funciona com o PC desligado
+O servidor fica ligado 24 h e é o **único** que recebe as mensagens do Telegram (a "caixa postal",
+que guarda tudo por **72 horas**).
+
+| Situação | Quem atende | O que acontece |
+|---|---|---|
+| PC **ligado** | o seu PC | Tudo como sempre: Executor, HDs, IA local, áudio na placa de vídeo |
+| PC **desligado** | o servidor (respostas com ☁️) | Conversa, especialistas com as bases deles, áudio, foto, documento, produção |
+| PC desligado + ordem que **precisa do PC** (`/pc`, mexer em arquivos, `/buscar`, agentes privados) | ninguém ainda | 📬 Fica guardada; o PC faz quando ligar (até 72 h) |
+
+- A conversa continua de um para o outro: a memória vai junto.
+- Trabalhos feitos na nuvem são trazidos para `resultados/` quando o PC liga.
+- O Vigia leva ao servidor, a cada 6 h, o que foi lido de novo (bibliotecas e acervo).
+- Servidor: `ubuntu@159.112.177.123` (chave `~/.ssh/central_ia_oracle`); serviços `central-caixa` e `central-bot`.
 
 ## No terminal (manutenção — feita pelo Claude Code/Copilot)
 

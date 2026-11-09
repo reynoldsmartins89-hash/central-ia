@@ -199,7 +199,7 @@ def sincronizar_dados(log=print) -> int:
     _ssh("mkdir -p ~/.central-ia/indices")
     enviados = 0
     for banco in bancos:
-        marca = max(banco.stat().st_mtime, *(p.stat().st_mtime for p in banco.parent.glob(banco.name + "-wal")))
+        marca = max([banco.stat().st_mtime] + [p.stat().st_mtime for p in banco.parent.glob(banco.name + "-wal")])
         if feitos.get(str(banco)) == marca:
             continue
         relativo = banco.relative_to(PASTA).as_posix()
