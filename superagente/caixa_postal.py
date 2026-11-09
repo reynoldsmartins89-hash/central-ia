@@ -169,9 +169,18 @@ def baixar_memoria() -> int:
             except RuntimeError:
                 continue   # ainda não existe no servidor
             novo, local = Path(tmp) / nome, PASTA / nome
-            if not local.exists() or novo.stat().st_mtime > local.stat().st_mtime + 1:
+            if not local.exists():
                 local.write_bytes(novo.read_bytes())
-                os.utime(local, (novo.stat().st_mtime, novo.stat().st_mtime))
+                trazidos += 1
+                continue
+            # JUNTA as duas versões (nunca substitui): nada do que foi dito no PC ou na nuvem se perde
+            from . import memoria
+            remoto = json.loads(novo.read_text(encoding="utf-8"))
+            atual = json.loads(local.read_text(encoding="utf-8"))
+            unido = (memoria.juntar_conversas(atual, remoto) if nome == "conversa.json"
+                     else memoria.juntar_perfis(atual, remoto))
+            if unido != atual:
+                local.write_text(json.dumps(unido, ensure_ascii=False, indent=1), encoding="utf-8")
                 trazidos += 1
     return trazidos
 

@@ -458,3 +458,17 @@ class TestConversaNatural(unittest.TestCase):
         self.assertIn("<b>Título</b>", html)
         self.assertIn("• <b>x</b> — y &lt; z", html)
         self.assertIn('<a href="https://x.org">site</a>', html)
+
+
+class TestMemoriaUnida(unittest.TestCase):
+    def test_pc_e_nuvem_juntam_sem_perder_falas(self):
+        from superagente import memoria
+        pc = {"inicio": 10, "atualizado": 20, "falas": [
+            {"quem": "voce", "texto": "pedido no PC", "quando": "09/11 18:32", "ts": 100}]}
+        nuvem = {"inicio": 15, "atualizado": 30, "falas": [
+            {"quem": "voce", "texto": "pedido na nuvem", "quando": "09/11 18:36", "ts": 200},
+            {"quem": "voce", "texto": "pedido no PC", "quando": "09/11 18:32", "ts": 100}]}
+        unido = memoria.juntar_conversas(pc, nuvem)
+        self.assertEqual([f["texto"] for f in unido["falas"]], ["pedido no PC", "pedido na nuvem"])
+        self.assertEqual((unido["inicio"], unido["atualizado"]), (10, 30))
+        self.assertEqual(memoria.juntar_perfis(["a"], ["a", "b"]), ["a", "b"])

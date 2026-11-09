@@ -50,7 +50,7 @@ def adicionar(quem: str, texto: str) -> None:
     """quem: 'voce' ou 'central'."""
     conversa = _conversa()
     conversa["falas"].append({"quem": quem, "texto": texto.strip()[:LIMITE_POR_FALA],
-                              "quando": datetime.now().strftime("%d/%m %H:%M")})
+                              "quando": datetime.now().strftime("%d/%m %H:%M"), "ts": time.time()})
     conversa["atualizado"] = time.time()
     _gravar(ARQUIVO, conversa)
 
@@ -135,3 +135,29 @@ def resumo() -> str:
     else:
         linhas.append("\n📌 Nada fixo ainda. Ex.: /lembrar Meu público são empresários do agronegócio")
     return "\n".join(linhas)
+
+
+def _momento(fala: dict) -> float:
+    if fala.get("ts"):
+        return float(fala["ts"])
+    try:   # falas antigas só têm "dd/mm HH:MM"
+        return datetime.strptime(f"{datetime.now().year}/{fala['quando']}", "%Y/%d/%m %H:%M").timestamp()
+    except (KeyError, ValueError):
+        return 0.0
+
+
+def juntar_conversas(a: dict, b: dict) -> dict:
+    """Une duas versões da conversa (PC e nuvem) sem perder nenhuma fala, em ordem de tempo."""
+    vistas, falas = set(), []
+    for fala in a.get("falas", []) + b.get("falas", []):
+        chave = (fala.get("quem"), fala.get("quando"), fala.get("texto", "")[:300])
+        if chave not in vistas:
+            vistas.add(chave)
+            falas.append(fala)
+    falas.sort(key=_momento)
+    return {"inicio": min(a.get("inicio", time.time()), b.get("inicio", time.time())),
+            "atualizado": max(a.get("atualizado", 0), b.get("atualizado", 0)), "falas": falas}
+
+
+def juntar_perfis(a: list, b: list) -> list:
+    return a + [f for f in b if f not in a]
