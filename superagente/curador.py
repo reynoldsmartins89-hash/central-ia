@@ -168,7 +168,46 @@ def _conectar_colecoes() -> sqlite3.Connection:
             amostra TEXT, protegida INTEGER, motivo TEXT, tema TEXT, confianca REAL,
             destino TEXT, status TEXT DEFAULT 'identificada');
     """)
+    colunas = {c[1] for c in con.execute("PRAGMA table_info(colecoes)")}
+    for coluna in ("subtema", "base_classificacao"):   # colunas novas em catálogos antigos
+        if coluna not in colunas:
+            con.execute(f"ALTER TABLE colecoes ADD COLUMN {coluna} TEXT")
     return con
+
+
+ARQUIVOS_LIDOS_POR_COLECAO = 4
+
+
+def _leitura_da_colecao(con: sqlite3.Connection, caminho: str) -> tuple[str, str]:
+    """Lê o CONTEÚDO de alguns arquivos da coleção (variando os tipos). Retorna (texto, base)."""
+    from . import extrator
+    if Path(caminho).is_file() or not Path(caminho).exists():
+        candidatos = [caminho]
+    else:
+        prefixo = caminho.rstrip("\\/") + os.sep
+        linhas = con.execute("""SELECT caminho, extensao FROM arquivos WHERE caminho LIKE ? ESCAPE '!'
+                                ORDER BY random() LIMIT 400""",
+                             (prefixo.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%",)).fetchall()
+        por_tipo: dict[str, list[str]] = {}
+        for c, ext in linhas:
+            if extrator.tem_texto(c):
+                por_tipo.setdefault(ext, []).append(c)
+        candidatos = []
+        while por_tipo and len(candidatos) < ARQUIVOS_LIDOS_POR_COLECAO:   # um de cada tipo, em rodízio
+            for ext in list(por_tipo):
+                candidatos.append(por_tipo[ext].pop())
+                if not por_tipo[ext]:
+                    del por_tipo[ext]
+                if len(candidatos) >= ARQUIVOS_LIDOS_POR_COLECAO:
+                    break
+    trechos = []
+    for c in candidatos:
+        metodo, texto = extrator.extrair(c)
+        if metodo == "conteúdo" and len(texto) > 80:
+            trechos.append(f"[{Path(c).name}] {texto[:900]}")
+    if trechos:
+        return "\n".join(trechos), f"conteúdo lido de {len(trechos)} arquivo(s)"
+    return "", "sem texto legível — classificado pelo nome da pasta e dos arquivos"
 
 
 def identificar_colecoes(raiz: str | Path, profundidade: int = 1, log=print) -> int:
@@ -214,9 +253,9 @@ def identificar_colecoes(raiz: str | Path, profundidade: int = 1, log=print) -> 
 
 # ---------------------------------------------------------------- 3. classificar
 def classificar(raiz: str | Path, limite: int = 200, temas: list[str] | None = None,
-                tamanho_lote: int = 25, log=print) -> int:
-    """A IA lê o NOME da pasta e uma amostra dos nomes de arquivos dentro dela e sugere um tema.
-    Coleções protegidas não são classificadas (não serão movidas)."""
+                tamanho_lote: int = 8, log=print) -> int:
+    """A IA LÊ O CONTEÚDO de alguns arquivos de cada coleção (PDF, Word, e-book, etc.), além do nome
+    da pasta e dos arquivos, e sugere tema + subtema. Coleções protegidas não são classificadas."""
     temas = temas or TEMAS_PADRAO
     raiz = _raiz(raiz)
     con = _conectar_colecoes()
@@ -226,17 +265,26 @@ def classificar(raiz: str | Path, limite: int = 200, temas: list[str] | None = N
         con = _conectar_colecoes()
     pendentes = con.execute("""SELECT caminho, arquivos, amostra FROM colecoes WHERE raiz = ? AND protegida = 0
                                AND tema IS NULL ORDER BY tamanho DESC LIMIT ?""", (str(raiz), limite)).fetchall()
-    sistema = ("Você é um bibliotecário que organiza coleções (pastas) por tema. Para cada coleção você "
-               "recebe o nome da pasta, quantos arquivos tem e exemplos de nomes de arquivos. "
-               "Escolha o tema mais adequado da lista e uma confiança de 0 a 1. Se for impossível saber, "
-               "use '99. NÃO CLASSIFICADO'. Responda SOMENTE com JSON.")
+    sistema = ("Você é um bibliotecário que organiza coleções (pastas ou arquivos) por tema e subtema. "
+               "Para cada coleção você recebe o nome, exemplos de nomes de arquivos e TRECHOS DO CONTEÚDO "
+               "lido de alguns arquivos. O CONTEÚDO tem prioridade sobre os nomes, que muitas vezes enganam. "
+               "Escolha o tema da lista, crie um subtema curto e específico (2 a 4 palavras, ex.: 'Rosacruz e "
+               "esoterismo', 'Tráfego pago', 'Receitas culinárias') e dê uma confiança de 0 a 1 "
+               "(menor quando só houver nomes, sem conteúdo). Se for impossível saber, use "
+               "'99. NÃO CLASSIFICADO'. Responda SOMENTE com JSON.")
     feitos = 0
     for inicio in range(0, len(pendentes), tamanho_lote):
         lote = pendentes[inicio:inicio + tamanho_lote]
-        itens = "\n".join(f"{i}: pasta '{os.path.relpath(c, raiz)}' ({n} arquivos) ex.: {', '.join(json.loads(a)[:8])}"
-                          for i, (c, n, a) in enumerate(lote))
-        mensagem = (f"Temas permitidos:\n" + "\n".join(temas) + f"\n\nColeções:\n{itens}\n\n"
-                    'Formato: [{"i": 0, "tema": "<tema exato da lista>", "confianca": 0.0}, ...]')
+        blocos, bases = [], []
+        for i, (c, n, a) in enumerate(lote):
+            conteudo, base = _leitura_da_colecao(con, c)
+            bases.append(base)
+            blocos.append(f"### {i}: '{os.path.relpath(c, raiz)}' ({n} arquivos)\n"
+                          f"Nomes de exemplo: {', '.join(json.loads(a)[:8])}\n"
+                          f"Conteúdo lido: {conteudo or '(nenhum texto legível: vídeos, áudios ou imagens)'}")
+        log(f"   📖 conteúdo lido de {sum(b.startswith('conteúdo') for b in bases)}/{len(lote)} coleções do lote")
+        mensagem = (f"Temas permitidos:\n" + "\n".join(temas) + "\n\nColeções:\n" + "\n\n".join(blocos) + "\n\n"
+                    'Formato: [{"i": 0, "tema": "<tema exato da lista>", "subtema": "<subtema>", "confianca": 0.0}]')
         try:
             _, resposta = provedores.chamar_com_reserva(MODELOS, sistema, mensagem, log=log)
             bloco = re.search(r"\[.*\]", resposta, re.S)
@@ -250,8 +298,10 @@ def classificar(raiz: str | Path, limite: int = 200, temas: list[str] | None = N
             except (KeyError, ValueError, TypeError):
                 continue
             if tema and 0 <= i < len(lote):
-                con.execute("UPDATE colecoes SET tema = ?, confianca = ?, status = 'classificada' WHERE caminho = ?",
-                            (tema, float(d.get("confianca") or 0.5), lote[i][0]))
+                subtema = re.sub(r'[\\/:*?"<>|]+', " ", str(d.get("subtema") or "")).strip()[:60] or "Geral"
+                con.execute("""UPDATE colecoes SET tema = ?, subtema = ?, confianca = ?, base_classificacao = ?,
+                               status = 'classificada' WHERE caminho = ?""",
+                            (tema, subtema, float(d.get("confianca") or 0.5), bases[i], lote[i][0]))
                 feitos += 1
         con.commit()
         log(f"   classificadas {feitos}/{len(pendentes)} coleções")
@@ -266,14 +316,14 @@ def propor(raiz: str | Path, pasta_organizada: str | Path | None = None, confian
     base = Path(pasta_organizada) if pasta_organizada else raiz / "ORGANIZADO PELO CURADOR"
     con = _conectar_colecoes()
     n = 0
-    for caminho, tema in con.execute("""SELECT caminho, tema FROM colecoes WHERE raiz = ? AND protegida = 0
-                                        AND status = 'classificada' AND confianca >= ?
-                                        AND tema != '99. NÃO CLASSIFICADO'""",
+    for caminho, tema, subtema in con.execute("""SELECT caminho, tema, coalesce(subtema, 'Geral') FROM colecoes
+                                        WHERE raiz = ? AND protegida = 0 AND status = 'classificada'
+                                        AND confianca >= ? AND tema != '99. NÃO CLASSIFICADO'""",
                                      (str(raiz), confianca_minima)).fetchall():
         atual = Path(caminho)
         if tema in atual.parts or base in atual.parents or atual == base:
             continue
-        destino = base / tema / atual.relative_to(raiz)
+        destino = base / tema / subtema / atual.name   # tema → subtema → a pasta (ou arquivo) original
         con.execute("UPDATE colecoes SET destino = ?, status = 'proposta' WHERE caminho = ?", (str(destino), caminho))
         n += 1
     con.commit()

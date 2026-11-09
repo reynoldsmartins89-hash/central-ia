@@ -116,7 +116,7 @@ class TestCentral(unittest.TestCase):
             self.assertEqual(curador.aplicar(raiz, log=lambda *_: None), 1)
             self.assertFalse(arquivo.exists())
             self.assertTrue((raiz / "QGIS" / "apps" / "qgis.exe").exists())  # programa intacto
-            movido = raiz / "ORGANIZADO PELO CURADOR" / "08. HISTÓRIA & BIOGRAFIAS" / "bagunca" / "historia_de_roma.pdf"
+            movido = raiz / "ORGANIZADO PELO CURADOR" / "08. HISTÓRIA & BIOGRAFIAS" / "Geral" / "bagunca" / "historia_de_roma.pdf"
             self.assertTrue(movido.exists())                   # a PASTA inteira foi junto
             self.assertEqual(curador.desfazer(log=lambda *_: None), 1)
             self.assertTrue(arquivo.exists())                  # voltou ao lugar original
