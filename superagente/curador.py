@@ -209,7 +209,60 @@ def _leitura_da_colecao(con: sqlite3.Connection, caminho: str) -> tuple[str, str
             trechos.append(f"[{Path(c).name}] {texto[:900]}")
     if trechos:
         return "\n".join(trechos), f"conteúdo lido de {len(trechos)} arquivo(s)"
+    amostra = _amostra_de_midia(con, caminho)   # pasta só de vídeos/áudios/imagens: ouve ou olha uma amostra
+    if amostra:
+        return amostra
     return "", "sem texto legível — classificado pelo nome da pasta e dos arquivos"
+
+
+MIDIAS_AUDIO = {".mp4", ".ts", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".mp3", ".m4a", ".wav", ".ogg", ".flac", ".aac"}
+MIDIAS_IMAGEM = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def _amostra_de_midia(con: sqlite3.Connection, caminho: str) -> tuple[str, str] | None:
+    """Ouve os 2 primeiros minutos de UM vídeo/áudio (ou olha UMA imagem) da coleção.
+    Usa primeiro a ficha do Agente Leitor, se o arquivo já tiver sido transcrito."""
+    import subprocess
+    import tempfile
+    p = Path(caminho)
+    if p.is_file():
+        arquivos = [(str(p), p.suffix.lower())]
+    else:
+        prefixo = caminho.rstrip("\\/") + os.sep
+        arquivos = con.execute("""SELECT caminho, extensao FROM arquivos WHERE caminho LIKE ? ESCAPE '!'
+                                  ORDER BY tamanho DESC LIMIT 200""",
+                               (prefixo.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%",)).fetchall()
+    midias = [c for c, e in arquivos if (e or "").lower() in MIDIAS_AUDIO]
+    imagens = [c for c, e in arquivos if (e or "").lower() in MIDIAS_IMAGEM]
+    try:
+        from . import leitor
+        tem_leituras = con.execute("SELECT 1 FROM sqlite_master WHERE name = 'leituras'").fetchone()
+        for alvo in midias[len(midias) // 2:][:2] + midias[:1]:   # do meio primeiro: costuma ser aula, não vinheta
+            ficha = con.execute("SELECT ficha FROM leituras WHERE caminho = ? AND status = 'lido'",
+                                (alvo,)).fetchone() if tem_leituras else None
+            if ficha and ficha[0] and Path(ficha[0]).exists():
+                return (f"[{Path(alvo).name}] {Path(ficha[0]).read_text(encoding='utf-8')[:1500]}",
+                        "transcrição do Agente Leitor")
+        from .reparador import _ffmpeg
+        ffmpeg = _ffmpeg()
+        for alvo in (midias[len(midias) // 2:][:2] + midias[:1]) if ffmpeg else []:
+            for inicio in ("300", "30", "0"):   # 5 min adentro (pula aberturas e silêncio), depois mais cedo
+                with tempfile.TemporaryDirectory() as temp:
+                    wav = Path(temp) / "amostra.wav"
+                    subprocess.run([ffmpeg, "-v", "error", "-y", "-ss", inicio, "-t", "120", "-i", alvo, "-vn",
+                                    "-ac", "1", "-ar", "16000", str(wav)], capture_output=True, timeout=300,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    if wav.exists() and wav.stat().st_size > 10000:
+                        _, texto = leitor._transcrever(str(wav))
+                        if len(texto.strip()) > 300:
+                            return f"[{Path(alvo).name} — 2 min ouvidos] {texto[:1500]}", "áudio ouvido (2 min)"
+        if imagens:
+            _, descricao = leitor._ler_imagem(imagens[0])
+            return f"[{Path(imagens[0]).name}] {descricao[:1200]}", "imagem vista pela IA"
+    except Exception as erro:  # noqa: BLE001 — sem amostra: fica com o nome
+        print(f"   (amostra de mídia falhou em {Path(caminho).name}: {type(erro).__name__}: {str(erro)[:120]})")
+        return None
+    return None
 
 
 PASTAS_DA_CENTRAL = {"duplicados para revisar", "reparados pela central", "para apagar - revisar",
