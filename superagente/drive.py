@@ -22,6 +22,10 @@ from pathlib import Path
 from .curador import _conectar
 
 PASTA = Path.home() / ".central-ia"
+# A configuração do rclone (conexões Drive e Fotos) fica num lugar FIXO da Central.
+# Sem isso, programas abertos de dentro do app Claude gravam/leem numa pasta virtual dele,
+# e o Vigia (que liga com o Windows) não enxerga as conexões.
+os.environ.setdefault("RCLONE_CONFIG", str(PASTA / "rclone.conf"))
 REMOTO = os.getenv("DRIVE_REMOTO", "gdrive")
 EXPORTAVEIS = {"application/vnd.google-apps.document", "application/vnd.google-apps.presentation",
                "application/vnd.google-apps.spreadsheet"}
