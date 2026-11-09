@@ -281,6 +281,16 @@ base = "E:/IDIOMAS/ÁRABE"
 privacidade = "nuvem"
 modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
 
+[agentes.poliglota]
+descricao = "Trabalha ENTRE idiomas: traduz qualquer material, compara línguas (latim, grego, românicas), identifica o idioma e planeja estudo de vários idiomas."
+habilidade = "idiomas/poliglota"
+modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
 [combinacoes.estudo_de_idiomas]
-agentes = ["ingles", "espanhol", "frances", "italiano", "alemao", "latim", "grego", "gestor"]
+agentes = ["poliglota", "ingles", "espanhol", "frances", "italiano", "alemao", "latim", "grego", "gestor"]
 quando = "aprender, revisar, traduzir ou praticar idiomas; plano de estudos; comparar idiomas (use só os idiomas pedidos)"
+
+[combinacoes.traducao_e_conteudo_internacional]
+agentes = ["poliglota", "redator", "revisor"]
+quando = "traduzir artigos/materiais, usar fontes em outros idiomas, publicar para público estrangeiro"

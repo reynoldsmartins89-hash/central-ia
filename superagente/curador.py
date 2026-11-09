@@ -75,7 +75,9 @@ def _tema_oficial(tema: str, temas: list[str]) -> str | None:
 
 def _conectar() -> sqlite3.Connection:
     PASTA.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(CATALOGO)
+    # timeout + WAL: vários agentes (leitor, duplicados, integridade) podem usar o catálogo ao mesmo tempo
+    con = sqlite3.connect(CATALOGO, timeout=300)
+    con.execute("PRAGMA journal_mode=WAL")
     con.executescript("""
         CREATE TABLE IF NOT EXISTS arquivos (
             caminho TEXT PRIMARY KEY, raiz TEXT, nome TEXT, extensao TEXT,
