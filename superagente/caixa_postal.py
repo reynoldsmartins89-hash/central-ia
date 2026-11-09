@@ -187,6 +187,15 @@ def enviar_memoria() -> None:
                 pass
 
 
+def _privados() -> tuple[set[str], list[str]]:
+    """Agentes privados (privacidade = "local") e o nome das pastas-base deles."""
+    from .agentes import carregar_equipe
+    equipe = carregar_equipe()[1]
+    privados = {n for n, a in equipe.items() if a.privacidade == "local"}
+    pastas = [Path(equipe[n].base).name for n in privados if equipe[n].base]
+    return privados, pastas
+
+
 def sincronizar_dados(log=print) -> int:
     """Envia ao servidor as bibliotecas dos agentes e o acervo lido (só o que mudou)."""
     host = os.getenv("CAIXA_POSTAL", "").strip()
@@ -195,8 +204,10 @@ def sincronizar_dados(log=print) -> int:
     import tempfile
     registro = PASTA / "sincronizado.json"
     feitos = json.loads(registro.read_text(encoding="utf-8")) if registro.exists() else {}
-    bancos = [PASTA / "catalogo.db"] + sorted((PASTA / "indices").glob("*.db"))
-    _ssh("mkdir -p ~/.central-ia/indices")
+    privados, pastas_privadas = _privados()
+    # agentes PRIVADOS (só IA local): a biblioteca deles nunca sai do PC
+    bancos = [PASTA / "catalogo.db"] + sorted(b for b in (PASTA / "indices").glob("*.db") if b.stem not in privados)
+    _ssh("mkdir -p ~/.central-ia/indices && rm -f " + " ".join(f"~/.central-ia/indices/{p}.db*" for p in privados))
     enviados = 0
     for banco in bancos:
         marca = max([banco.stat().st_mtime] + [p.stat().st_mtime for p in banco.parent.glob(banco.name + "-wal")])
@@ -209,6 +220,13 @@ def sincronizar_dados(log=print) -> int:
             origem, destino = sqlite3.connect(banco, timeout=300), sqlite3.connect(copia)
             origem.backup(destino)   # cópia consistente mesmo com o banco em uso
             origem.close()
+            if banco.name == "catalogo.db":   # tira da cópia tudo o que for das pastas dos agentes privados
+                for tabela, in destino.execute("SELECT name FROM sqlite_master WHERE type IN ('table') "
+                                               "AND sql LIKE '%caminho%' AND name NOT LIKE 'acervo_%'").fetchall():
+                    for pasta in pastas_privadas:
+                        destino.execute(f"DELETE FROM {tabela} WHERE caminho LIKE ?", (f"%{pasta}%",))
+                destino.commit()
+                destino.execute("VACUUM")
             destino.close()
             _scp(str(copia), f"{host}:.central-ia/{relativo}.novo")
         _ssh(f"mv ~/.central-ia/{relativo}.novo ~/.central-ia/{relativo} && rm -f ~/.central-ia/{relativo}-wal "
