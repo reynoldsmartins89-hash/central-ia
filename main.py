@@ -131,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
     c_drv.add_argument("pasta", nargs="?", default="", help="em 'separar': só esta pasta do Drive (ex.: EBOOKS)")
     c_drv.add_argument("--minutos", type=float, default=None)
     c_drv.add_argument("--limite", type=int, default=None)
+    c_fot = sub.add_parser("fotos", help="envia fotos/vídeos bons do HD para o Google Fotos")
+    c_fot.add_argument("acao", choices=["conectar", "enviar"])
+    c_fot.add_argument("pasta", nargs="?", default="")
     c_dup = sub.add_parser("duplicados", help="encontra cópias idênticas e as separa (com seu consentimento)")
     c_dup.add_argument("acao", choices=["procurar", "relatorio", "separar", "conferir", "apagar"])
     c_dup.add_argument("alvo", nargs="*", default=[], help="discos/pastas (padrão: todos os catalogados)")
@@ -232,6 +235,21 @@ def main(argv: list[str] | None = None) -> int:
                 print("Nada foi movido.")
         elif a.acao == "ler":
             drive.ler_tudo(a.limite, a.minutos)
+        return 0
+
+    if a.comando == "fotos":
+        from superagente import fotos
+        if a.acao == "conectar":
+            if not fotos.configurado():
+                print("Vai abrir o navegador: entre na sua conta Google e clique em PERMITIR (Google Fotos).")
+                import subprocess
+                subprocess.run(fotos.comando_conexao(), stdout=subprocess.DEVNULL)  # não exibe a chave de acesso
+            print("✅ Google Fotos conectado." if fotos.configurado() else "⚠ Não conectou; tente de novo.")
+        elif not a.pasta:
+            print('Informe a pasta, ex.: fotos enviar "E:/Fotos"')
+            return 1
+        else:
+            fotos.enviar(a.pasta)
         return 0
 
     if a.comando == "duplicados":
