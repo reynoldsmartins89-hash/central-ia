@@ -18,13 +18,28 @@ from . import carrossel, conhecimento, imagens, obsidian, telegram
 from .agentes import RAIZ, Agente, carregar_combinacoes, carregar_equipe
 
 
+class Plano(list):
+    """Lista de etapas + o que o secretário explicou (resumo e sugestões de reforço)."""
+    resumo: str = ""
+    sugestoes: list = []
+
+
 def formatar_plano(plano: list[dict], titulo: str = "📋 Plano do superagente") -> str:
     """Texto do plano para o Telegram/terminal, com o motivo de cada escolha."""
-    linhas = [f"{titulo}:"]
+    linhas = [f"{titulo} ({len(plano)} etapa{'s' if len(plano) != 1 else ''}):"]
+    if getattr(plano, "resumo", ""):
+        linhas.append(f"🗂 {plano.resumo}")
     for i, p in enumerate(plano, 1):
         linhas.append(f"{i}. [{p['agente']}] {p['tarefa']}")
         if p.get("porque"):
             linhas.append(f"   ↳ {p['porque']}")
+    if len(plano) >= MINIMO_PARA_SINTESE:
+        linhas.append(f"{len(plano) + 1}. [superagente] síntese final integrando todos os resultados")
+    sugestoes = getattr(plano, "sugestoes", [])
+    if sugestoes:
+        linhas.append("\n💡 Também poderiam ajudar:")
+        linhas += [f"• {s['agente']}: {s.get('porque', '')}" for s in sugestoes]
+        linhas.append("(se quiser incluí-los, rejeite e peça de novo mencionando-os)")
     return "\n".join(linhas)
 
 
@@ -33,7 +48,21 @@ class PlanoCancelado(Exception):
 
 PASTA_FLUXOS = RAIZ / "fluxos"
 PASTA_RESULTADOS = RAIZ / "resultados"
-LIMITE_CONTEXTO = 24_000  # caracteres de resultados anteriores repassados a cada etapa
+LIMITE_CONTEXTO = 30_000   # caracteres de resultados anteriores repassados a cada etapa
+LIMITE_SINTESE = 60_000    # a síntese final enxerga mais
+MINIMO_PARA_SINTESE = 4    # a partir de quantos agentes o superagente consolida tudo no final
+
+
+def montar_contexto(entrada: str, resultados: list[tuple[str, str]], limite: int = LIMITE_CONTEXTO) -> str:
+    """Pedido original + resultados anteriores, dividindo o espaço de forma justa entre os agentes
+    (com muitos agentes, nenhum resultado é descartado: cada um é resumido ao seu início)."""
+    partes = [f"## Entrada original\n{entrada}"]
+    if resultados:
+        cota = max(1500, (limite - len(entrada)) // len(resultados))
+        for i, (agente, texto) in enumerate(resultados, 1):
+            corte = texto if len(texto) <= cota else texto[:cota] + "\n[…resultado resumido por espaço…]"
+            partes.append(f"## Resultado da etapa {i} ({agente})\n{corte}")
+    return "\n\n".join(partes)
 
 
 def _slug(texto: str) -> str:
@@ -104,24 +133,37 @@ class Superagente:
             "2. Especialistas cuja biblioteca tem trechos sobre o pedido devem entrar CEDO no plano, para fundamentar. "
             "Não use especialistas com 0 trechos, a menos que o tema seja claramente do domínio deles.\n"
             "3. Depois venham os agentes de produção; termine com o revisor se o resultado for publicado ou entregue.\n"
-            "4. Use de 2 a 6 etapas; não repita agente sem motivo.\n\n"
+            "4. O TAMANHO da equipe depende do pedido: perguntas simples pedem 1–2 agentes; trabalhos amplos ou "
+            "interdisciplinares podem usar 5, 8 ou até 12 etapas, envolvendo vários especialistas. "
+            "Não economize especialistas quando o tema cruza áreas; não inclua agentes que não acrescentam nada.\n"
+            "5. Aponte até 4 agentes que ficaram de fora mas poderiam enriquecer o resultado, com o motivo.\n\n"
             "Responda SOMENTE com JSON no formato:\n"
-            '[{"agente": "<nome>", "tarefa": "<instrução específica>", "porque": "<motivo da escolha em uma frase>"}, ...]'
+            '{"resumo": "<em 1-2 frases: que equipe você montou e por quê>",\n'
+            ' "plano": [{"agente": "<nome>", "tarefa": "<instrução específica>", "porque": "<motivo em uma frase>"}],\n'
+            ' "tambem_poderiam_ajudar": [{"agente": "<nome>", "porque": "<o que acrescentaria>"}]}'
         )
         try:
             _, resposta = self.mestre.executar(tarefa, modelos=self.modelos_forcados, log=self.log)
-            plano = _extrair_json(resposta)
-            if isinstance(plano, dict):  # alguns modelos embrulham: {"plano": [...]}
-                plano = next((v for v in plano.values() if isinstance(v, list)), [])
-            plano = [{"agente": p["agente"], "tarefa": str(p.get("tarefa") or objetivo),
-                      "porque": str(p.get("porque") or "")}
-                     for p in plano if isinstance(p, dict) and p.get("agente") in self.equipe]
+            dados = _extrair_json(resposta)
+            resumo, extras = "", []
+            if isinstance(dados, dict):
+                resumo = str(dados.get("resumo") or "")
+                extras = [e for e in dados.get("tambem_poderiam_ajudar") or []
+                          if isinstance(e, dict) and e.get("agente") in self.equipe]
+                lista = dados.get("plano") or next((v for v in dados.values() if isinstance(v, list)), [])
+            else:
+                lista = dados
+            plano = Plano({"agente": p["agente"], "tarefa": str(p.get("tarefa") or objetivo),
+                           "porque": str(p.get("porque") or "")}
+                          for p in lista if isinstance(p, dict) and p.get("agente") in self.equipe)
             if plano:
+                plano.resumo = resumo
+                plano.sugestoes = [e for e in extras if e["agente"] not in {p["agente"] for p in plano}]
                 return plano
             self.log("⚠ Plano sem agentes válidos; usando o generalista.")
         except Exception as erro:  # modelo devolveu algo que não é JSON, ou nenhum respondeu
             self.log(f"⚠ Não consegui planejar ({str(erro)[:120]}); usando o generalista.")
-        return [{"agente": "generalista", "tarefa": objetivo}]
+        return Plano([{"agente": "generalista", "tarefa": objetivo, "porque": ""}])
 
     # ------------------------------------------------------------------ execução
     def _rodar_plano(self, titulo: str, entrada: str, plano: list[dict], tipo: str = "superagente") -> Path:
@@ -136,8 +178,9 @@ class Superagente:
 
         pasta = PASTA_RESULTADOS / f"{datetime.now():%Y-%m-%d_%H%M%S}_{_slug(titulo)}"
         pasta.mkdir(parents=True, exist_ok=True)
-        registro = {"titulo": titulo, "entrada": entrada, "etapas": []}
-        contexto = f"## Entrada original\n{entrada}"
+        registro = {"titulo": titulo, "entrada": entrada, "resumo_equipe": getattr(plano, "resumo", ""),
+                    "etapas": []}
+        resultados: list[tuple[str, str]] = []
 
         for i, etapa in enumerate(plano, 1):
             agente: Agente = self.equipe[etapa["agente"]]
@@ -145,7 +188,7 @@ class Superagente:
             if self.ao_vivo:
                 telegram.enviar(f"▶ Etapa {i}/{len(plano)} — {agente.nome} trabalhando…")
             modelo, resposta = agente.executar(
-                etapa["tarefa"], contexto[-LIMITE_CONTEXTO:], self.modelos_forcados, log=self.log)
+                etapa["tarefa"], montar_contexto(entrada, resultados), self.modelos_forcados, log=self.log)
             self.log(f"   ✔ concluída com {modelo}")
             if self.ao_vivo:
                 telegram.enviar(f"✔ {agente.nome} concluiu usando {modelo}")
@@ -163,8 +206,24 @@ class Superagente:
                 if self.ao_vivo:
                     for lamina in laminas:
                         telegram.enviar_arquivo(lamina, f"Carrossel — {lamina.stem}")
-            contexto += f"\n\n## Resultado da etapa {i} ({agente.nome})\n{resposta}"
+            resultados.append((agente.nome, resposta))
             registro["etapas"].append({**etapa, "modelo": modelo, "arquivo": arquivo.name})
+
+        if len(plano) >= MINIMO_PARA_SINTESE:  # equipe grande: o superagente integra tudo num material só
+            self.log(f"\n▶ Síntese final — superagente integrando {len(plano)} resultados")
+            if self.ao_vivo:
+                telegram.enviar(f"🧩 Síntese final: integrando o trabalho dos {len(plano)} agentes…")
+            modelo, sintese = self.mestre.executar(
+                "Integre os resultados de todos os agentes em UM material final, coerente e sem repetições, "
+                "que responda plenamente ao pedido original. Preserve as citações de fontes [n] e os pontos "
+                "de cada especialista; quando houver divergência entre eles, explicite-a. "
+                "No início, um parágrafo dizendo como cada agente contribuiu.",
+                montar_contexto(entrada, resultados, LIMITE_SINTESE), self.modelos_forcados, log=self.log)
+            arquivo = pasta / f"{len(plano) + 1:02d}-sintese-final.md"
+            arquivo.write_text(sintese, encoding="utf-8")
+            registro["etapas"].append({"agente": "superagente", "tarefa": "síntese final", "porque": "",
+                                       "modelo": modelo, "arquivo": arquivo.name})
+            self.log(f"   ✔ síntese concluída com {modelo}")
 
         (pasta / "registro.json").write_text(
             json.dumps(registro, ensure_ascii=False, indent=2), encoding="utf-8")

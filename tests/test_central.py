@@ -34,6 +34,7 @@ class TestCentral(unittest.TestCase):
         try:
             self.assertTrue((pasta / "registro.json").exists())
             self.assertTrue((pasta / "07-roteirista.md").exists())
+            self.assertTrue((pasta / "08-sintese-final.md").exists())  # 7 agentes ≥ 4 → síntese
             self.assertTrue((pasta / "RESULTADO-COMPLETO.md").exists())
         finally:
             shutil.rmtree(pasta)
@@ -79,6 +80,14 @@ class TestCentral(unittest.TestCase):
         texto = formatar_plano([{"agente": "marketing_digital", "tarefa": "x", "porque": "tem material sobre funis"}])
         self.assertIn("↳ tem material sobre funis", texto)
         self.assertEqual(len(texto.splitlines()), 3)
+
+    def test_contexto_divide_espaco_entre_muitos_agentes(self):
+        from superagente.orquestrador import montar_contexto
+        resultados = [(f"agente{i}", "x" * 20_000) for i in range(10)]
+        ctx = montar_contexto("pedido", resultados, limite=30_000)
+        for i in range(10):  # nenhum agente some, mesmo com 10 resultados grandes
+            self.assertIn(f"agente{i}", ctx)
+        self.assertLess(len(ctx), 40_000)
 
     def test_combinacoes_existem(self):
         from superagente.agentes import carregar_combinacoes

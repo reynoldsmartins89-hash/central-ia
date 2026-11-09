@@ -24,6 +24,7 @@ Escreva o que você quer, em texto livre. Exemplos:
 
 Comandos:
 /conteudo <tema> — pacote completo: dossiê, artigo-mãe, revisão, redes sociais e roteiro de YouTube
+/equipe <pedido> — o secretário recomenda quais agentes usar (sem executar)
 /rapido <pergunta> — resposta direta, sem plano
 /agentes — ver a equipe
 /status — ver quais IAs estão funcionando
@@ -58,6 +59,15 @@ def tratar(texto: str) -> None:
         return
     if comando == "/status":
         telegram.enviar(_status())
+        return
+    if comando == "/equipe":
+        if not resto:
+            telegram.enviar("Use: /equipe descreva o que você quer fazer")
+            return
+        telegram.enviar("🗂 Analisando quais agentes deveriam trabalhar nisso…")
+        plano = Superagente(log=print).planejar(resto)
+        telegram.enviar(formatar_plano(plano, "🗂 Equipe recomendada")
+                        + "\n\nNada foi executado. Para rodar, mande o pedido normalmente (sem /equipe).")
         return
     if comando == "/rapido":
         if not resto:
