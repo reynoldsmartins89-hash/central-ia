@@ -34,8 +34,33 @@ def baixar(file_id: str, nome: str) -> Path:
     return destino
 
 
+def _transcrever_groq(caminho: Path) -> str:
+    """Transcrição pela internet (Groq Whisper, gratuito) — usada no servidor, que não tem placa de vídeo."""
+    import subprocess
+    import tempfile
+    import uuid
+    with tempfile.TemporaryDirectory() as tmp:
+        mp3 = Path(tmp) / "audio.mp3"   # 16 kHz mono: pequeno e suficiente para voz
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(caminho), "-vn", "-ac", "1",
+                        "-ar", "16000", "-b:a", "48k", str(mp3)], check=True, timeout=600)
+        fronteira = uuid.uuid4().hex
+        corpo = b"".join([
+            f'--{fronteira}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n'.encode(),
+            f'--{fronteira}\r\nContent-Disposition: form-data; name="file"; filename="audio.mp3"\r\n'
+            f"Content-Type: audio/mpeg\r\n\r\n".encode() + mp3.read_bytes() + b"\r\n",
+            f"--{fronteira}--\r\n".encode()])
+    req = urllib.request.Request("https://api.groq.com/openai/v1/audio/transcriptions", data=corpo, headers={
+        "Authorization": f"Bearer {provedores._chave('GROQ_API_KEY')}",
+        "Content-Type": f"multipart/form-data; boundary={fronteira}", "User-Agent": "central-ia"})
+    import json
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return json.loads(r.read().decode("utf-8")).get("text", "").strip()
+
+
 def transcrever(caminho: Path) -> str:
-    from . import leitor
+    from . import caixa_postal, leitor
+    if caixa_postal.papel() == "nuvem":
+        return _transcrever_groq(caminho)
     _, texto = leitor._transcrever(str(caminho))
     # tira as marcas de tempo/idioma "[00:03] [pt] " de cada linha
     return " ".join(re.sub(r"^\[\d+:\d+(?::\d+)?\]\s*(\[\w+\]\s*)?", "", l).strip()

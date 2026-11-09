@@ -12,7 +12,7 @@ import os
 import time
 import traceback
 
-from . import memoria, provedores, telegram
+from . import caixa_postal, memoria, provedores, telegram
 from .agentes import carregar_equipe
 from .orquestrador import PASTA_FLUXOS, PlanoCancelado, Superagente, formatar_plano
 
@@ -81,6 +81,8 @@ def tratar(texto: str) -> None:
     comando = comando.lower().split("@")[0]
     resto = resto.strip()
 
+    if caixa_postal.papel() == "nuvem" and comando in SO_NO_PC:
+        raise caixa_postal.PrecisaDoPC(comando)
     if comando in ("/start", "/ajuda", "/help"):
         telegram.enviar(AJUDA)
         return
@@ -177,6 +179,8 @@ def tratar(texto: str) -> None:
     if not comando.startswith("/"):
         from . import executor
         modo = modo_da_mensagem(texto)
+        if modo == "acao" and caixa_postal.papel() == "nuvem" and executor.classificar(texto) == "acao":
+            raise caixa_postal.PrecisaDoPC("ordem para o PC")
         if modo == "acao" and executor.disponivel() and executor.classificar(texto) == "acao":
             _executar_no_pc(texto)
         elif modo == "tarefa":
@@ -199,6 +203,11 @@ def tratar(texto: str) -> None:
         return
 
     _tarefa_em_equipe(sa, texto)
+
+
+# comandos que dependem do PC (Executor e catálogo dos HDs): na nuvem, ficam guardados para o PC
+SO_NO_PC = {"/pc", "/executar", "/continuar", "/buscar", "/curador", "/duplicados", "/integridade",
+            "/reparos", "/leitura", "/vigia"}
 
 
 # ------------------------------------------------------------------ modos: conversa, tarefa, ação
@@ -264,6 +273,8 @@ def conversar(texto: str, especialista: bool = True) -> str:
     modelo, resposta = agente.executar(tarefa, log=lambda *_: None, consulta=f"{anterior} {texto}")
     memoria.adicionar("central", resposta)
     rotulo = "" if agente.nome == "generalista" else f"📚 {agente.nome} · "
+    if caixa_postal.papel() == "nuvem":
+        rotulo = f"☁️ {rotulo}"
     _enviar_longo(f"{rotulo}{modelo.split(':')[0]}\n\n{resposta}")
     return resposta
 
@@ -285,6 +296,8 @@ def _tarefa_em_equipe(sa: Superagente, texto: str) -> None:
 def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
     """Agente Executor: plano (só lendo) → seu ✅ → execução real → relatório."""
     from . import executor
+    if caixa_postal.papel() == "nuvem":
+        raise caixa_postal.PrecisaDoPC("ordem para o PC")
     if not executor.disponivel():
         telegram.enviar("⚠️ O Agente Executor precisa do Claude Code instalado e logado neste PC.")
         return
@@ -321,8 +334,20 @@ def _tem_conteudo(msg: dict) -> bool:
 
 def _pendentes_ao_ligar(meu_chat: str) -> int:
     """Ao ligar: avisa quais ordens chegaram com o PC desligado e devolve o ponto de partida para atendê-las."""
+    papel = caixa_postal.papel()
+    if papel == "nuvem":
+        print("☁️ Bot da nuvem: atende quando o PC estiver desligado.")
+        return 0
     try:
-        atualizacoes = telegram._api("getUpdates", {"timeout": 0}).get("result", [])
+        if papel == "pc_com_caixa":
+            for passo in (caixa_postal.baixar_memoria, caixa_postal.trazer_resultados):
+                try:
+                    passo()
+                except Exception as erro:  # noqa: BLE001
+                    print(f"(sincronização com o servidor falhou: {erro})")
+            atualizacoes = caixa_postal.remoto_espiar()
+        else:
+            atualizacoes = telegram._api("getUpdates", {"timeout": 0}).get("result", [])
     except Exception:  # noqa: BLE001
         atualizacoes = []
     agora = time.time()
@@ -348,17 +373,21 @@ def rodar() -> None:
     meu_chat = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     deslocamento = _pendentes_ao_ligar(meu_chat)   # ordens enviadas com o PC desligado (até 24 h)
     print("🟢 Bot rodando. Deixe esta janela aberta (pode minimizar). Ctrl+C para parar.")
+    papel = caixa_postal.papel()
+    ultima_busca = time.time()
     while True:
         try:
-            r = telegram._api("getUpdates", {"offset": deslocamento, "timeout": 50,
-                                             "allowed_updates": ["message", "callback_query"]}, timeout=60)
+            if papel == "pc_com_caixa" and time.time() - ultima_busca > caixa_postal.PC_AUSENTE_APOS:
+                caixa_postal.baixar_memoria()   # o PC dormiu: a nuvem pode ter conversado nesse meio-tempo
+            r = telegram.atualizacoes(deslocamento, 50 if papel == "sozinho" else 25)
+            ultima_busca = time.time()
         except KeyboardInterrupt:
             raise
         except Exception as erro:  # sem internet, etc.: espera e tenta de novo
-            print(f"(sem conexão com o Telegram: {erro}; tentando de novo em 10s)")
+            print(f"(sem conexão com o Telegram/servidor: {erro}; tentando de novo em 10s)")
             time.sleep(10)
             continue
-        for u in r.get("result", []):
+        for u in r:
             deslocamento = u["update_id"] + 1
             msg = u.get("message") or {}
             if str(msg.get("chat", {}).get("id")) != meu_chat:
@@ -371,10 +400,11 @@ def rodar() -> None:
             if time.time() - msg.get("date", time.time()) > JANELA_PENDENTES:
                 continue  # velha demais: o Telegram já teria descartado
             print(f"\n📩 {msg.get('text') or msg.get('caption') or '[áudio/foto/documento]'}")
-            try:  # confirma ANTES de atender: se algo travar, a mesma ordem não se repete em loop
-                telegram._api("getUpdates", {"offset": deslocamento, "timeout": 0, "limit": 1})
-            except Exception:  # noqa: BLE001
-                pass
+            if papel == "sozinho":
+                try:  # confirma ANTES de atender: se algo travar, a mesma ordem não se repete em loop
+                    telegram._api("getUpdates", {"offset": deslocamento, "timeout": 0, "limit": 1})
+                except Exception:  # noqa: BLE001
+                    pass
             try:
                 from . import midia
                 texto = midia.entrada(msg, avisar=telegram.enviar)
@@ -392,6 +422,18 @@ def rodar() -> None:
                 tratar(texto)
             except PlanoCancelado:
                 pass
+            except caixa_postal.PrecisaDoPC:
+                caixa_postal.guardar_para_o_pc(u["update_id"])
+                telegram.enviar("📬 Isso precisa do seu PC (arquivos, HDs ou agente privado). Guardei a ordem: "
+                                "assim que o PC ligar, ele faz e te responde aqui (vale por 72 h).")
             except Exception as erro:  # noqa: BLE001 — o bot nunca deve cair
                 traceback.print_exc()
-                telegram.enviar(f"⚠️ Deu um erro: {str(erro)[:500]}\nTente de novo ou mande /status.")
+                _avisar_erro(erro)
+            finally:
+                if papel == "pc_com_caixa":   # a nuvem continua a conversa se o PC desligar
+                    import threading
+                    threading.Thread(target=caixa_postal.enviar_memoria, daemon=True).start()
+
+
+def _avisar_erro(erro: Exception) -> None:
+    telegram.enviar(f"⚠️ Deu um erro: {str(erro)[:500]}\nTente de novo ou mande /status.")

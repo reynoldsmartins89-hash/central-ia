@@ -324,3 +324,48 @@ class TestExclusaoSegura(unittest.TestCase):
             self.assertEqual(r, "sem_original")
             r, _, _ = duplicados._conferir_um(Con(True), "antiga", grupo, {"antiga": str(sozinha)})
             self.assertEqual(r, "divergente")
+
+
+class TestCaixaPostal(unittest.TestCase):
+    """Servidor guarda as mensagens; o PC tem prioridade; a nuvem só atende com o PC desligado."""
+
+    def setUp(self):
+        import json
+        import tempfile
+        import time
+        from pathlib import Path
+        from superagente import caixa_postal
+        self.cp = caixa_postal
+        self.pasta = tempfile.mkdtemp()
+        self.banco_original = caixa_postal.BANCO
+        caixa_postal.BANCO = Path(self.pasta) / "caixa.db"
+        con = caixa_postal._banco()
+        for uid in (1, 2):
+            con.execute("INSERT INTO mensagens (update_id, dados, data) VALUES (?, ?, ?)",
+                        (uid, json.dumps({"update_id": uid, "message": {"text": f"m{uid}"}}), time.time()))
+        con.commit()
+        con.close()
+
+    def tearDown(self):
+        self.cp.BANCO = self.banco_original
+        shutil.rmtree(self.pasta, ignore_errors=True)
+
+    def test_nuvem_atende_com_pc_desligado_e_guarda_o_que_e_do_pc(self):
+        entregues = self.cp.pegar("nuvem", espera=0)
+        self.assertEqual([u["update_id"] for u in entregues], [1, 2])
+        self.assertEqual(self.cp.pegar("nuvem", espera=0), [])        # cada mensagem uma vez só
+        self.cp.guardar_para_o_pc(2)                                  # precisa do PC
+        self.assertEqual(self.cp.pegar("nuvem", espera=0), [])        # a nuvem não pega de volta
+        self.assertEqual([u["update_id"] for u in self.cp.pegar("pc", espera=0)], [2])
+
+    def test_pc_ligado_tem_prioridade(self):
+        self.assertEqual(len(self.cp.pegar("pc", espera=0)), 2)
+        import json
+        import time
+        con = self.cp._banco()
+        con.execute("INSERT INTO mensagens (update_id, dados, data) VALUES (3, ?, ?)",
+                    (json.dumps({"update_id": 3}), time.time()))
+        con.commit()
+        con.close()
+        self.assertTrue(self.cp.pc_online())
+        self.assertEqual(self.cp.pegar("nuvem", espera=0), [])        # PC ligado: nuvem não atende

@@ -54,6 +54,10 @@ class Agente:
         """Executa a tarefa. Retorna (modelo_usado, resposta).
         `consulta`: texto usado para buscar na biblioteca/acervo (padrão: a própria tarefa)."""
         busca = consulta or tarefa
+        if self.privacidade == "local":
+            from . import caixa_postal
+            if caixa_postal.papel() == "nuvem":   # agente privado: só roda no seu PC, nunca na nuvem
+                raise caixa_postal.PrecisaDoPC(f"o agente {self.nome} é privado (só IA local)")
         hab = habilidades.carregar(self.habilidade)
         sistema = f"{hab.como_prompt()}\n\n---\n{REGRAS_GERAIS}"
         mensagem = f"## Tarefa\n{tarefa}"

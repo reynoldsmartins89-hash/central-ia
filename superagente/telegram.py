@@ -69,8 +69,23 @@ def enviar_arquivo(caminho, legenda: str = "") -> None:
 
 
 def _ultimo_update() -> int:
+    from . import caixa_postal
+    if caixa_postal.papel() != "sozinho":
+        return 0   # com a caixa postal, cada mensagem é entregue uma única vez
     r = _api("getUpdates", {"timeout": 0})
     return max((u["update_id"] for u in r.get("result", [])), default=0)
+
+
+def atualizacoes(deslocamento: int = 0, espera: int = 30) -> list[dict]:
+    """Novas mensagens/cliques. Vêm da caixa postal (servidor) quando ela existe; senão, do Telegram."""
+    from . import caixa_postal
+    papel = caixa_postal.papel()
+    if papel == "nuvem":
+        return caixa_postal.pegar("nuvem", espera)
+    if papel == "pc_com_caixa":
+        return caixa_postal.remoto_pegar(espera)
+    return _api("getUpdates", {"offset": deslocamento, "timeout": espera,
+                               "allowed_updates": ["message", "callback_query"]}, timeout=espera + 10).get("result", [])
 
 
 def pedir_aprovacao(texto: str, espera_max: int = 3600) -> bool:
@@ -82,9 +97,7 @@ def pedir_aprovacao(texto: str, espera_max: int = 3600) -> bool:
     print("📱 Aguardando sua aprovação no Telegram…")
     limite = time.time() + espera_max
     while time.time() < limite:
-        r = _api("getUpdates", {"offset": deslocamento, "timeout": 30,
-                                "allowed_updates": ["message", "callback_query"]}, timeout=40)
-        for u in r.get("result", []):
+        for u in atualizacoes(deslocamento, 30):
             deslocamento = u["update_id"] + 1
             if "message" in u:
                 enviar("⏳ Ainda estou esperando você aprovar ou rejeitar o plano acima.")

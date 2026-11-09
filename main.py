@@ -143,6 +143,9 @@ def main(argv: list[str] | None = None) -> int:
     c_rep.add_argument("alvo", nargs="?", default="")
     c_rep.add_argument("--limite", type=int, default=None)
     sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
+    c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
+    c_cx.add_argument("acao", choices=["receber", "pegar", "espiar", "sincronizar", "status"])
+    c_cx.add_argument("espera", nargs="?", type=int, default=25)
     c_int = sub.add_parser("integridade", help="encontra arquivos corrompidos ou incompletos (só lê)")
     c_int.add_argument("acao", choices=["verificar", "relatorio"])
     c_int.add_argument("alvo", nargs="?", default="")
@@ -175,6 +178,20 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "telegram":
         return configurar_telegram()
 
+    if a.comando == "caixa":
+        import json as _json
+        from superagente import caixa_postal
+        if a.acao == "receber":
+            caixa_postal.receber()
+        elif a.acao == "pegar":
+            print(_json.dumps(caixa_postal.pegar("pc", a.espera), ensure_ascii=False))
+        elif a.acao == "espiar":
+            print(_json.dumps(caixa_postal.espiar_pc(), ensure_ascii=False))
+        elif a.acao == "sincronizar":
+            caixa_postal.sincronizar_dados()
+        else:
+            print(f"papel: {caixa_postal.papel()}")
+        return 0
     if a.comando == "vigia":
         from superagente import vigia
         vigia.rodar()
