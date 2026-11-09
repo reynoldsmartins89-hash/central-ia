@@ -270,3 +270,29 @@ class TestExecutor(unittest.TestCase):
         from superagente.executor import REGRAS
         for regra in ("NUNCA apague definitivamente", "senhas", "NUNCA envie mensagens"):
             self.assertIn(regra, REGRAS)
+
+
+class TestOrdensComPcDesligado(unittest.TestCase):
+    def test_atende_ordens_recentes_e_ignora_velhas_e_estranhos(self):
+        import time as _t
+        from unittest import mock
+        from superagente import bot
+        agora = _t.time()
+        updates = {"result": [
+            {"update_id": 10, "message": {"chat": {"id": 1}, "text": "velha", "date": agora - 30 * 3600}},
+            {"update_id": 11, "message": {"chat": {"id": 999}, "text": "estranho", "date": agora}},
+            {"update_id": 12, "message": {"chat": {"id": 1}, "text": "/pc feche o Obsidian", "date": agora - 600}},
+        ]}
+        enviados = []
+        with mock.patch.object(bot.telegram, "_api", return_value=updates), \
+                mock.patch.object(bot.telegram, "enviar", side_effect=lambda t, *a: enviados.append(t)):
+            self.assertEqual(bot._pendentes_ao_ligar("1"), 12)
+        self.assertIn("feche o Obsidian", enviados[0])
+        self.assertNotIn("estranho", enviados[0])
+
+    def test_sem_pendentes_comeca_do_fim(self):
+        from unittest import mock
+        from superagente import bot
+        with mock.patch.object(bot.telegram, "_api", return_value={"result": [{"update_id": 5, "message": {}}]}), \
+                mock.patch.object(bot.telegram, "enviar"):
+            self.assertEqual(bot._pendentes_ao_ligar("1"), 6)

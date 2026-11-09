@@ -186,6 +186,28 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
         telegram.enviar(("📋 RELATÓRIO DO EXECUTOR\n\n" if i == 0 else "") + relatorio[i:i + 3900])
 
 
+JANELA_PENDENTES = 24 * 3600   # o Telegram guarda mensagens não lidas por 24 h
+
+
+def _pendentes_ao_ligar(meu_chat: str) -> int:
+    """Ao ligar: avisa quais ordens chegaram com o PC desligado e devolve o ponto de partida para atendê-las."""
+    try:
+        atualizacoes = telegram._api("getUpdates", {"timeout": 0}).get("result", [])
+    except Exception:  # noqa: BLE001
+        atualizacoes = []
+    agora = time.time()
+    pendentes = [u for u in atualizacoes if str((u.get("message") or {}).get("chat", {}).get("id")) == meu_chat
+                 and (u["message"].get("text") or "").strip()
+                 and agora - u["message"].get("date", 0) <= JANELA_PENDENTES]
+    if not pendentes:
+        telegram.enviar("🟢 Central de IA online. Mande sua tarefa! (/ajuda para exemplos)")
+        return max((u["update_id"] for u in atualizacoes), default=0) + 1
+    lista = "\n".join(f"{i}. {u['message']['text'][:120]}" for i, u in enumerate(pendentes, 1))
+    telegram.enviar(f"🟢 Central de IA online.\n📬 Enquanto o PC estava desligado você mandou "
+                    f"{len(pendentes)} ordem(ns). Vou atender agora, na ordem:\n{lista}")
+    return pendentes[0]["update_id"]
+
+
 def rodar() -> None:
     if not telegram.configurado():
         raise SystemExit("Telegram não configurado. Use o menu → 'Conectar o Telegram'.")
@@ -194,8 +216,7 @@ def rodar() -> None:
         print("🟢 O bot já está rodando (o Vigia mantém ele ligado). Nada a fazer.")
         return
     meu_chat = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    deslocamento = telegram._ultimo_update() + 1  # ignora mensagens antigas
-    telegram.enviar("🟢 Central de IA online. Mande sua tarefa! (/ajuda para exemplos)")
+    deslocamento = _pendentes_ao_ligar(meu_chat)   # ordens enviadas com o PC desligado (até 24 h)
     print("🟢 Bot rodando. Deixe esta janela aberta (pode minimizar). Ctrl+C para parar.")
     while True:
         try:
@@ -212,7 +233,13 @@ def rodar() -> None:
             msg = u.get("message") or {}
             if str(msg.get("chat", {}).get("id")) != meu_chat or not msg.get("text"):
                 continue  # ignora outras pessoas e mensagens sem texto
+            if time.time() - msg.get("date", time.time()) > JANELA_PENDENTES:
+                continue  # velha demais: o Telegram já teria descartado
             print(f"\n📩 {msg['text']}")
+            try:  # confirma ANTES de atender: se algo travar, a mesma ordem não se repete em loop
+                telegram._api("getUpdates", {"offset": deslocamento, "timeout": 0, "limit": 1})
+            except Exception:  # noqa: BLE001
+                pass
             try:
                 tratar(msg["text"].strip())
             except PlanoCancelado:

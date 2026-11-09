@@ -55,6 +55,11 @@ O **Agente Vigia** inicia junto com o Windows (atalho na pasta Inicializar). Ele
 mantém a leitura do acervo andando, religa o que cair e avisa você no Telegram.
 Não precisa abrir nada: é só mandar mensagem para o bot.
 
+### 📬 Ordens com o PC desligado
+O Telegram guarda suas mensagens por **24 horas**. Quando o PC liga, o bot avisa
+"📬 Enquanto o PC estava desligado você mandou N ordens" e atende todas, na ordem
+(as que mexem no PC continuam pedindo o seu ✅).
+
 ## No terminal (manutenção — feita pelo Claude Code/Copilot)
 
 | Comando | O que faz |
