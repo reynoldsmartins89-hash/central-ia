@@ -99,6 +99,11 @@ class Tarefa:
         if codigo is None:
             return
         self.proc = None
+        pedido = PASTA / f"reiniciar_{self.nome}"
+        if pedido.exists():   # reinício PEDIDO (atualização): religa já, sem contar como erro nem avisar
+            pedido.unlink(missing_ok=True)
+            self.falhas, self.proxima = 0, agora
+            return
         if codigo == 0:
             self.falhas = 0
             self.etapa += 1
@@ -224,3 +229,20 @@ def resumo() -> str:
         situacao = f"▶ rodando: {t['etapa']}" if t["rodando"] else f"⏸ próxima rodada {t['proxima']}"
         linhas.append(f"• {t['titulo']}: {situacao}" + (f" · {t['falhas']} falha(s)" if t["falhas"] else ""))
     return "\n".join(linhas)
+
+
+def reiniciar(nome: str) -> bool:
+    """Pede ao Vigia para religar uma tarefa (ex.: o bot, após uma atualização) SEM contar como erro."""
+    PASTA.mkdir(parents=True, exist_ok=True)
+    (PASTA / f"reiniciar_{nome}").write_text(str(time.time()))
+    alvo = {"bot": "main.py bot", "roteador": "main.py roteador", "openwebui": "main.py openwebui"}.get(nome, nome)
+    encerrados = 0
+    try:
+        saida = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | Where-Object { "
+                                f"$_.CommandLine -match '{alvo}' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId "
+                                "-Force; 'ok' }"], capture_output=True, text=True, timeout=60).stdout
+        encerrados = saida.count("ok")
+    except Exception:  # noqa: BLE001
+        pass
+    return encerrados > 0

@@ -163,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     c_si.add_argument("url")
     c_si.add_argument("agente")
     c_si.add_argument("--limite", type=int, default=300)
+    c_re = sub.add_parser("reiniciar", help="religa uma tarefa do Vigia (bot, roteador, openwebui) sem contar como erro")
+    c_re.add_argument("tarefa")
     c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
     c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
@@ -254,6 +256,10 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "site":
         from superagente import fontes_web
         fontes_web.coletar_site(a.url, a.agente, a.limite)
+        return 0
+    if a.comando == "reiniciar":
+        from superagente import vigia
+        print("🔄 religando" if vigia.reiniciar(a.tarefa) else "nada rodando com esse nome (o Vigia liga sozinho)")
         return 0
     if a.comando == "avisar":
         from superagente import telegram
