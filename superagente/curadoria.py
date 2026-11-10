@@ -90,6 +90,7 @@ TEMAS.update({
                    '"residência fiscal"', '"saída fiscal"', '"teoria das bandeiras"', "offshore", '"nômade digital"',
                    "passaporte", '"golden visa"', "naturalização"],
         "drive_nomes": ["imigra", "cidadania", "visto", "passaport", "offshore", "bandeiras", "exterior"],
+        "pastas_fixas": ["~/.central-ia/fontes_web/mentor_imigracao"],   # Settee e Capital Global (sites)
     },
     "tradicao_catolica": {
         "especialista": ("um especialista na doutrina católica tradicional, na Missa Tridentina, no Concílio de Trento e "

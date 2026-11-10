@@ -159,6 +159,10 @@ def main(argv: list[str] | None = None) -> int:
     c_md.add_argument("--sem-midias", action="store_true", help="não transcreve vídeos/áudios")
     sub.add_parser("openwebui", help="abre a tela de conversa (Open WebUI) em http://localhost:8080, ligada à Central")
     sub.add_parser("roteador", help="a Central como modelo único (Open WebUI): escolhe especialista e IA sozinha")
+    c_si = sub.add_parser("site", help="lê os artigos de um site inteiro e guarda como base de um especialista")
+    c_si.add_argument("url")
+    c_si.add_argument("agente")
+    c_si.add_argument("--limite", type=int, default=300)
     c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
     c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
@@ -246,6 +250,10 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "roteador":
         from superagente import roteador_api
         roteador_api.rodar()
+        return 0
+    if a.comando == "site":
+        from superagente import fontes_web
+        fontes_web.coletar_site(a.url, a.agente, a.limite)
         return 0
     if a.comando == "avisar":
         from superagente import telegram
