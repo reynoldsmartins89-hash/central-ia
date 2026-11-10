@@ -140,9 +140,13 @@ def tarefas_padrao() -> list[Tarefa]:
         leitura.append(["drive", "ler"])
     if os.getenv("CAIXA_POSTAL", "").strip():   # leva ao servidor da nuvem o que foi lido de novo
         leitura.append(["caixa", "sincronizar"])
-    return [Tarefa("bot", "o bot do Telegram", [["bot"]], repetir_a_cada=60),
-            Tarefa("leitura", "a leitura do acervo (Agente Leitor/Reparador)", leitura,
-                   repetir_a_cada=ESPERA_NOVA_LEITURA)]
+    tarefas = [Tarefa("bot", "o bot do Telegram", [["bot"]], repetir_a_cada=60),
+               Tarefa("leitura", "a leitura do acervo (Agente Leitor/Reparador)", leitura,
+                      repetir_a_cada=ESPERA_NOVA_LEITURA)]
+    if (Path.home() / ".central-ia" / "openwebui" / ".venv" / "Scripts" / "open-webui.exe").exists():
+        tarefas += [Tarefa("roteador", "a Central como modelo único", [["roteador"]], repetir_a_cada=30),
+                    Tarefa("openwebui", "a tela de conversa (Open WebUI)", [["openwebui"]], repetir_a_cada=30)]
+    return tarefas
 
 
 # ------------------------------------------------------------------ saúde geral

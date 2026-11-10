@@ -157,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
     c_md = sub.add_parser("markdown", help="converte TODOS os arquivos de uma pasta em .md (subpasta organizada)")
     c_md.add_argument("pasta")
     c_md.add_argument("--sem-midias", action="store_true", help="não transcreve vídeos/áudios")
+    sub.add_parser("openwebui", help="abre a tela de conversa (Open WebUI) em http://localhost:8080, ligada à Central")
+    sub.add_parser("roteador", help="a Central como modelo único (Open WebUI): escolhe especialista e IA sozinha")
     c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
     c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
@@ -231,6 +233,19 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "markdown":
         from superagente import conversor
         conversor.converter_pasta(a.pasta, midias=not a.sem_midias)
+        return 0
+    if a.comando == "openwebui":
+        import subprocess as _sp
+        pasta = Path.home() / ".central-ia" / "openwebui"
+        env = dict(os.environ, OPENAI_API_BASE_URL="http://127.0.0.1:8790/v1", OPENAI_API_KEY="central",
+                   ENABLE_OLLAMA_API="false", DEFAULT_MODELS="central", DATA_DIR=str(pasta / "dados"),
+                   WEBUI_NAME="Central de IA", ENABLE_OPENAI_API="true", PYTHONIOENCODING="utf-8")
+        (pasta / "dados").mkdir(parents=True, exist_ok=True)
+        return _sp.call([str(pasta / ".venv" / "Scripts" / "open-webui.exe"), "serve", "--host", "127.0.0.1",
+                         "--port", "8080"], env=env, cwd=pasta)
+    if a.comando == "roteador":
+        from superagente import roteador_api
+        roteador_api.rodar()
         return 0
     if a.comando == "avisar":
         from superagente import telegram

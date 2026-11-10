@@ -485,3 +485,12 @@ class TestAcervoCompleto(unittest.TestCase):
         self.assertGreater(len(tamanhos), 90)
         self.assertLessEqual(max(tamanhos), 1900)
         self.assertEqual(sum(t.count("palavra") for (t,) in con.execute("SELECT texto FROM acervo")), 20000)
+
+
+class TestRoteador(unittest.TestCase):
+    def test_custo_beneficio(self):
+        from superagente.roteador_api import profundidade
+        self.assertEqual(profundidade("bom dia"), "rapido")
+        self.assertEqual(profundidade("quanto é 15% de 300?"), "rapido")
+        self.assertEqual(profundidade("explique a doutrina do preço justo em São Tomás e compare com Salamanca"),
+                         "profundo")
