@@ -189,6 +189,28 @@ privacidade = "nuvem"
 modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
 acervo = true
 
+[agentes.gestao_projetos]
+descricao = "Consultor de Gestão de Projetos (tradicional, ágil e híbrido): TAP, EAP, cronograma, riscos, custos, stakeholders — fundamentado no seu MBA em Gestão de Projetos e no PMBOK."
+habilidade = "conhecimento/gestao-projetos"
+base = "G:/Meu Drive/MBA em Gestão de Projetos"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.mestrado_china]
+descricao = "Especialista do seu Máster en Negocios con China y Asia-Pacífico: economia, cultura de negócios, comércio e oportunidades na China e na Ásia-Pacífico."
+habilidade = "conhecimento/mestrado-china"
+base = "G:/Meu Drive/Máster en Negocios con China y Asia-Pacífico"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+
+[agentes.a_guerra_ensina]
+descricao = "A Guerra Ensina: correlaciona qualquer tema com a Filosofia da Guerra e entrega pauta, artigo-mãe, derivações ou temporada para o blog."
+habilidade = "conteudo/a-guerra-ensina"
+base = "G:/Meu Drive/EBOOKS/05. ESTRATÉGIA, INTELIGÊNCIA & DEFESA"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
 [agentes.viver_de_estudo]
 descricao = "Especialista do curso Viver de Estudo da sua biblioteca: empreender com conteúdo, Instagram, anúncios e formalização (MEI, nota fiscal)."
 habilidade = "conhecimento/viver-de-estudo"
