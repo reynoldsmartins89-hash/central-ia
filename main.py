@@ -154,6 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     c_cu.add_argument("agente")
     c_cu.add_argument("--relatorio", action="store_true", help="só mostra o que já foi decidido")
     c_cu.add_argument("--reindexar", action="store_true", help="refaz a biblioteca com as decisões já tomadas")
+    c_md = sub.add_parser("markdown", help="converte TODOS os arquivos de uma pasta em .md (subpasta organizada)")
+    c_md.add_argument("pasta")
+    c_md.add_argument("--sem-midias", action="store_true", help="não transcreve vídeos/áudios")
     c_av = sub.add_parser("avisar", help="manda uma mensagem sua para o Telegram (usado nos lembretes)")
     c_av.add_argument("texto")
     c_cx = sub.add_parser("caixa", help="caixa postal na nuvem (servidor recebe o Telegram; PC busca por SSH)")
@@ -224,6 +227,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             curadoria.montar(a.agente)
             print(curadoria.relatorio(a.agente))
+        return 0
+    if a.comando == "markdown":
+        from superagente import conversor
+        conversor.converter_pasta(a.pasta, midias=not a.sem_midias)
         return 0
     if a.comando == "avisar":
         from superagente import telegram
