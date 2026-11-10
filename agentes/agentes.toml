@@ -171,15 +171,15 @@ modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "
 descricao = "Especialista em cibersegurança DEFENSIVA fundamentado na sua biblioteca. Roda só no seu PC (privado)."
 habilidade = "conhecimento/cyberseguranca"
 base = "G:/Meu Drive/Agente_CyberSecurity"
-privacidade = "local"
-modelos = ["ollama:qwen3:4b"]
+privacidade = "nuvem"   # decisão do Reynolds (09/11/2026): agente comum, como os outros
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
 
 [agentes.seguranca_publica]
 descricao = "Especialista em segurança pública fundamentado na sua biblioteca. Roda só no seu PC (privado)."
 habilidade = "conhecimento/seguranca-publica"
 base = "G:/Meu Drive/Agente_Seguranca_Publica"
-privacidade = "local"
-modelos = ["ollama:qwen3:4b"]
+privacidade = "nuvem"   # decisão do Reynolds (09/11/2026): agente comum, como os outros
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
 
 [agentes.mentor_educacao]
 descricao = "Mentor, consultor e psicopedagogo: estudo, aprendizagem e educação (de adultos e crianças) unindo trivium, quadrivium, escolástica, patrística e doutrina católica com a neurociência — fundamentado nos seus materiais de educação lidos pelo conteúdo (HDs e Drive)."
