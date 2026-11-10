@@ -56,6 +56,55 @@ TEMAS = {
     },
 }
 
+TEMAS.update({
+    "economista_catolico": {
+        "especialista": ("um economista católico escolástico (doutrina social da Igreja, Escola de Salamanca, usura, preço "
+                         "justo, distributismo) que também domina contabilidade, finanças pessoais, investimentos e tributação"),
+        "descricao": ("economia escolástica e doutrina social da Igreja; distributismo; usura, juros, preço justo, moeda e "
+                      "bancos; ECONOMIA em geral (macro, micro, escolas econômicas); CONTABILIDADE; FINANÇAS PESSOAIS e "
+                      "familiares; investimentos, orçamento, dívidas, aposentadoria; tributação; finanças de empresas"),
+        "nao": "material que só cita dinheiro de passagem; marketing e vendas; editais e apostilas de outras áreas",
+        "termos": ["distributismo", "usura", '"preço justo"', '"doutrina social"', '"rerum novarum"', '"quadragesimo anno"',
+                   "contabilidade", '"finanças pessoais"', '"educação financeira"', '"fluxo de caixa"', "macroeconomia",
+                   "microeconomia", '"escola austríaca"', '"renda fixa"', '"tesouro direto"', "previdência",
+                   '"imposto de renda"', "inflação", '"balanço patrimonial"', "investimentos"],
+        "drive_nomes": ["econom", "finanç", "contab", "investiment", "distribut", "usura", "tribut"],
+        "pastas_fixas": ["~/.central-ia/livros/economia-escolastica-catolica/fontes"],
+    },
+    "bitcoin": {
+        "especialista": "um consultor especializado em Bitcoin e criptomoedas",
+        "descricao": ("Bitcoin, blockchain e criptomoedas: autocustódia, carteiras, segurança, mineração, halving, "
+                      "Lightning, economia do Bitcoin (moeda sólida, escola austríaca), investimento, tributação e regulação"),
+        "nao": "material que só cita cripto de passagem; golpes e promessas de enriquecimento sem conteúdo técnico",
+        "termos": ["bitcoin", "criptomoeda", "criptomoedas", "blockchain", "satoshi", "ethereum", "autocustódia",
+                   "halving", "lightning", '"carteira fria"', '"moeda sólida"', "criptoativos"],
+        "drive_nomes": ["bitcoin", "cripto", "blockchain", "btc"],
+    },
+    "mentor_imigracao": {
+        "especialista": "um mentor de imigração especialista na teoria das bandeiras",
+        "descricao": ("imigração, vistos, residência, cidadania (por descendência e por investimento), teoria das bandeiras, "
+                      "residência fiscal, saída fiscal do Brasil, empresas e contas no exterior, nômade digital, morar e "
+                      "trabalhar fora (Paraguai, Portugal, Itália, Espanha, EUA etc.)"),
+        "nao": "material que só cita viagem ou outro país de passagem; turismo",
+        "termos": ["imigração", "emigrar", '"cidadania italiana"', '"cidadania portuguesa"', '"green card"',
+                   '"residência fiscal"', '"saída fiscal"', '"teoria das bandeiras"', "offshore", '"nômade digital"',
+                   "passaporte", '"golden visa"', "naturalização"],
+        "drive_nomes": ["imigra", "cidadania", "visto", "passaport", "offshore", "bandeiras", "exterior"],
+    },
+    "tradicao_catolica": {
+        "especialista": ("um especialista na doutrina católica tradicional, na Missa Tridentina, no Concílio de Trento e "
+                         "no latim eclesiástico"),
+        "descricao": ("Missa Tridentina (rito romano tradicional), liturgia e Missal de São Pio V, Concílio de Trento, "
+                      "Catecismo Romano, doutrina e moral católica tradicional, Magistério, Padres e Doutores da Igreja, "
+                      "LATIM eclesiástico e clássico (gramática, textos litúrgicos), canto gregoriano, espiritualidade"),
+        "nao": "material que só cita a Igreja de passagem; política; esoterismo e ocultismo",
+        "termos": ["tridentina", '"missa tradicional"', '"concílio de trento"', "liturgia", "missal", '"catecismo romano"',
+                   "latim", "gregoriano", '"vetus ordo"', '"summorum pontificum"', "breviário", '"ofício divino"',
+                   "patrística", "tomismo", "latina"],
+        "drive_nomes": ["tridentin", "trento", "missa", "liturg", "latim", "latin", "catecismo", "gregorian"],
+    },
+})
+
 
 # ------------------------------------------------------------------ candidatos
 def _amostra(texto: str) -> str:
@@ -140,7 +189,7 @@ def _julgar(tema: dict, lote: list[tuple[str, dict]]) -> dict[str, tuple[bool, s
     from . import provedores
     itens = "\n\n".join(f"[{i}] TÍTULO: {item['titulo']}\nCONTEÚDO: {_amostra(item['texto'])}"
                         for i, (_, item) in enumerate(lote, 1))
-    sistema = ("Você é um bibliotecário RIGOROSO montando a biblioteca de um mentor de educação. Para cada material, "
+    sistema = (f"Você é um bibliotecário RIGOROSO montando a biblioteca de: {tema.get('especialista', 'um mentor de educação')}. Para cada material, "
                "leia o conteúdo e dê uma NOTA de 0 a 10 para o quanto o ASSUNTO CENTRAL dele é o tema pedido "
                "(10 = é inteiramente sobre isso; 5 = toca no tema; 0 = outro assunto). Seja exigente: material de "
                "outra área que só usa palavras como 'aprender' ou 'estudo' recebe nota baixa. Responda SOMENTE JSON: "
@@ -155,6 +204,27 @@ def _julgar(tema: dict, lote: list[tuple[str, dict]]) -> dict[str, tuple[bool, s
             nota = float(d.get("nota", 0))
             saida[lote[n - 1][0]] = (nota >= NOTA_MINIMA, f"{str(d.get('tema', ''))[:60]}")
     return saida
+
+
+def _candidatos_fixos(tema: dict) -> dict[str, dict]:
+    """Pastas que entram INTEIRAS, sem julgamento (ex.: as fontes do livro de Economia Escolástica)."""
+    saida = {}
+    for pasta in tema.get("pastas_fixas", []):
+        for p in sorted(Path(pasta).expanduser().rglob("*")):
+            if p.is_file() and p.suffix.lower() in (".md", ".txt"):
+                texto = p.read_text(encoding="utf-8", errors="replace")
+                titulo = next((l.split(":", 1)[1].strip() for l in texto.splitlines()[:6] if l.startswith("titulo:")), p.stem)
+                saida[str(p)] = {"titulo": titulo, "fonte": "fixa", "texto": texto}
+    return saida
+
+
+def _todos_candidatos(agente: str) -> tuple[dict, list]:
+    tema = TEMAS[agente]
+    candidatos = _candidatos_acervo(tema["termos"])
+    candidatos.update(_candidatos_bibliotecas(tema["termos"], {agente}))
+    do_drive, midias = _candidatos_drive(tema["drive_nomes"])
+    candidatos.update(do_drive)
+    return candidatos, midias
 
 
 def _decisoes(agente: str) -> dict:
@@ -173,10 +243,11 @@ def montar(agente: str, log=print) -> dict:
     decisoes = _decisoes(agente)
     decisoes.pop("_midias_drive", None)
     log("🔎 Juntando candidatos (HDs, pastas Agente_… do Drive e resto do Drive)…")
-    candidatos = _candidatos_acervo(tema["termos"])
-    candidatos.update(_candidatos_bibliotecas(tema["termos"], {agente}))
-    do_drive, midias = _candidatos_drive(tema["drive_nomes"])
-    candidatos.update(do_drive)
+    candidatos, midias = _todos_candidatos(agente)
+    fixos = _candidatos_fixos(tema)
+    for c, i in fixos.items():   # entram direto
+        decisoes[c] = {"entra": True, "tema": "fonte fixa", "titulo": i["titulo"], "fonte": "fixa"}
+    candidatos.update(fixos)
     pendentes = [(c, i) for c, i in candidatos.items() if c not in decisoes]
     log(f"   {len(candidatos):,} candidatos ({len(pendentes):,} ainda não lidos) · {len(midias)} vídeos/áudios no Drive")
     inicio, feitos = time.time(), 0
@@ -223,11 +294,8 @@ def indexar(agente: str, candidatos: dict | None = None, log=print) -> dict:
     decisoes = {c: d for c, d in _decisoes(agente).items() if not c.startswith("_")}
     aprovados = [c for c, d in decisoes.items() if d["entra"]]
     if candidatos is None:
-        tema = TEMAS[agente]
-        candidatos = _candidatos_acervo(tema["termos"])
-        candidatos.update(_candidatos_bibliotecas(tema["termos"], {agente}))
-        do_drive, _ = _candidatos_drive(tema["drive_nomes"])
-        candidatos.update(do_drive)
+        candidatos, _ = _todos_candidatos(agente)
+        candidatos.update(_candidatos_fixos(TEMAS[agente]))
     _caminho_indice(agente).unlink(missing_ok=True)   # refaz do zero: a biblioteca reflete as decisões atuais
     con = _conectar(agente)
     trechos = 0

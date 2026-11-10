@@ -211,6 +211,38 @@ privacidade = "nuvem"
 modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
 acervo = true
 
+[agentes.economista_catolico]
+descricao = "Economista católico escolástico e consultor de finanças: doutrina social, usura, preço justo, distributismo — e contabilidade, finanças pessoais, investimentos e tributação."
+habilidade = "conhecimento/economista-catolico"
+base = "curadoria:economista_catolico"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
+[agentes.bitcoin]
+descricao = "Consultor de Bitcoin: fundamentos, autocustódia e segurança, economia do Bitcoin, investimento e tributação de cripto no Brasil."
+habilidade = "conhecimento/bitcoin"
+base = "curadoria:bitcoin"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
+[agentes.mentor_imigracao]
+descricao = "Mentor de imigração e teoria das bandeiras: vistos, residência, cidadania, residência fiscal e plano para viver e investir em outros países."
+habilidade = "conhecimento/mentor-imigracao"
+base = "curadoria:mentor_imigracao"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
+[agentes.tradicao_catolica]
+descricao = "Especialista na Tradição Católica: Missa Tridentina, Concílio de Trento, Catecismo Romano, liturgia, espiritualidade e latim eclesiástico."
+habilidade = "conhecimento/tradicao-catolica"
+base = "curadoria:tradicao_catolica"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
 [agentes.viver_de_estudo]
 descricao = "Especialista do curso Viver de Estudo da sua biblioteca: empreender com conteúdo, Instagram, anúncios e formalização (MEI, nota fiscal)."
 habilidade = "conhecimento/viver-de-estudo"
