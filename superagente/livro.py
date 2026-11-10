@@ -315,12 +315,19 @@ def pdf(livro: Livro, destino: Path | None = None, log=print) -> Path:
     arquivo_html = livro.pasta / "livro.html"
     arquivo_html.write_text(pagina, encoding="utf-8")
     destino = destino or (livro.pasta / f"{livro.slug}.pdf")
-    edge = next((p for p in (Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
-                             Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")) if p.exists()), None)
-    if not edge:
-        raise RuntimeError("Microsoft Edge não encontrado para gerar o PDF")
-    subprocess.run([str(edge), "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                    f"--print-to-pdf={destino}", arquivo_html.as_uri()], capture_output=True, timeout=600)
+    navegadores = [p for p in (Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+                               Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+                               Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+                               Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")) if p.exists()]
+    if not navegadores:
+        raise RuntimeError("nenhum navegador (Chrome/Edge) encontrado para gerar o PDF")
+    destino.unlink(missing_ok=True)
+    for navegador in navegadores:   # perfil próprio: não interfere no navegador que você estiver usando
+        subprocess.run([str(navegador), "--headless=new", "--disable-gpu", "--no-first-run", "--no-pdf-header-footer",
+                        f"--user-data-dir={livro.pasta / 'perfil_navegador'}", f"--print-to-pdf={destino}",
+                        arquivo_html.as_uri()], capture_output=True, timeout=900)
+        if destino.exists() and destino.stat().st_size > 10_000:
+            break
     if not destino.exists():
         raise RuntimeError("o PDF não foi gerado")
     log(f"📕 PDF: {destino} ({destino.stat().st_size / 1e6:.1f} MB)")
