@@ -292,6 +292,7 @@ blockquote { margin: 8pt 1.2em; font-style: italic; color: #333; }
 .capa { text-align: center; page-break-after: always; padding-top: 38%; }
 .capa h1 { page-break-before: avoid; font-size: 26pt; text-align: center; }
 .capa .sub { font-size: 13pt; font-style: italic; margin-top: 10pt; }
+.capa .autor { font-size: 14pt; margin-top: 40pt; letter-spacing: 1px; }
 .capa .nota { font-size: 9pt; margin-top: 60pt; color: #555; }
 .sumario h1 { page-break-before: always; } .sumario li { margin: 3pt 0; text-indent: 0; }
 """
@@ -302,16 +303,16 @@ def pdf(livro: Livro, destino: Path | None = None, log=print) -> Path:
     plano = livro.estado["plano"]
     partes = [f"<div class='capa'><h1>{_html.escape(plano['titulo'])}</h1>"
               f"<div class='sub'>{_html.escape(plano.get('subtitulo', ''))}</div>"
-              "<div class='nota'>Síntese organizada pela Central de IA a partir do canal do Telegram, dos textos e "
-              "vídeos nele citados e dos materiais do acervo pessoal — com as fontes indicadas em cada capítulo."
-              "</div></div>",
+              f"<div class='autor'>{_html.escape(livro.estado.get('autor', ''))}</div>"
+              "<div class='nota'>Obra construída a partir de ampla pesquisa — textos, vídeos, livros e cursos do "
+              "acervo do autor —, com as fontes indicadas em cada capítulo.</div></div>",
               "<div class='sumario'><h1>Sumário</h1><ol>" + "".join(
                   f"<li>{_html.escape(c['titulo'])}</li>" for c in plano["capitulos"]) + "</ol></div>",
               f"<h1>Apresentação</h1>{markdown.markdown(plano.get('apresentacao', ''))}"]
     for arquivo in sorted(livro.capitulos.glob("*.md")):
         partes.append(markdown.markdown(arquivo.read_text(encoding="utf-8"), extensions=["extra", "sane_lists"]))
     pagina = (f"<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>{_html.escape(plano['titulo'])}"
-              f"</title><style>{CSS}</style></head><body>{''.join(partes)}</body></html>")
+              f"</title><meta name='author' content='{_html.escape(livro.estado.get('autor', ''))}'><style>{CSS}</style></head><body>{''.join(partes)}</body></html>")
     arquivo_html = livro.pasta / "livro.html"
     arquivo_html.write_text(pagina, encoding="utf-8")
     destino = destino or (livro.pasta / f"{livro.slug}.pdf")
