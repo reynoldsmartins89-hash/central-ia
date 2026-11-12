@@ -108,7 +108,7 @@ def enviar_arquivo(caminho, legenda: str = "") -> None:
         f"https://api.telegram.org/bot{token}/sendDocument", data=b"".join(partes),
         headers={"Content-Type": f"multipart/form-data; boundary={fronteira}"})
     try:
-        urllib.request.urlopen(req, timeout=120).read()
+        urllib.request.urlopen(req, timeout=900).read()   # arquivos grandes (livros) levam mais tempo
     except Exception as erro:  # noqa: BLE001
         print(f"   (aviso: não consegui enviar o arquivo ao Telegram: {erro})")
 
