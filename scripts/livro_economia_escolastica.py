@@ -20,7 +20,7 @@ from superagente import agentes, livro as L  # noqa: E402
 
 agentes.carregar_env()
 LIVRO = L.Livro("economia-escolastica-catolica", "Economia Escolástica Católica")
-LIVRO.estado["autor"] = "Reynolds Martins"
+LIVRO.estado["autor"] = "Reynolds Rebelo"
 PASTA_DRIVE_ID = "1-QmaTSUB04--CCtfrxh64XJGLbaJrF7c"
 ANEXOS = LIVRO.pasta / "anexos"
 CURSO = Path(r"E:\Introdução ao Distributismo")
