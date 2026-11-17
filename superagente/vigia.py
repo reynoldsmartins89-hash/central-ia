@@ -147,7 +147,9 @@ def tarefas_padrao() -> list[Tarefa]:
         leitura.append(["caixa", "sincronizar"])
     tarefas = [Tarefa("bot", "o bot do Telegram", [["bot"]], repetir_a_cada=60),
                Tarefa("leitura", "a leitura do acervo (Agente Leitor/Reparador)", leitura,
-                      repetir_a_cada=ESPERA_NOVA_LEITURA)]
+                      repetir_a_cada=ESPERA_NOVA_LEITURA),
+               Tarefa("idiomas", "a cópia dos idiomas lidos para o Drive", [["idiomas", "drive"]],
+                      repetir_a_cada=1800)]
     if (Path.home() / ".central-ia" / "openwebui" / ".venv" / "Scripts" / "open-webui.exe").exists():
         tarefas += [Tarefa("roteador", "a Central como modelo único", [["roteador"]], repetir_a_cada=30),
                     Tarefa("openwebui", "a tela de conversa (Open WebUI)", [["openwebui"]], repetir_a_cada=30)]
@@ -215,6 +217,19 @@ def rodar() -> None:
         for t in tarefas:
             if t.proc and t.proc.poll() is None:
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(t.proc.pid)], capture_output=True)
+
+
+def pausar() -> str:
+    """Antes de desligar o PC: encerra o Vigia e tudo o que ele roda. A leitura retoma de onde parou."""
+    try:
+        pid = int((PASTA / "vigia.pid").read_text().strip())
+    except (OSError, ValueError):
+        pid = 0
+    if not pid or not processo_vivo(pid):
+        return "⏸ O Vigia já estava parado."
+    subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+    return ("⏸ Vigia pausado (bot, leitura, roteador e Open WebUI encerrados). Pode desligar o PC; "
+            "ao religar, o lembrete pede o seu OK para retomar.")
 
 
 def resumo() -> str:

@@ -1,0 +1,528 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mesa de Guerra</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="author" content="Reynolds Rebelo">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: carta de situação — trilho de etapas à esquerda, prancheta de trabalho à direita, grade topográfica ao fundo. */
+:root{
+  --bg:#E9ECE4;          /* papel de carta, verde-acinzentado */
+  --panel:#F6F7F2;
+  --ink:#1B231E;
+  --muted:#5C675F;
+  --line:#C9CFC3;
+  --grid:rgba(40,60,45,.06);
+  --accent:#9A6516;      /* latão */
+  --accent-ink:#FFFFFF;
+  --accent-soft:rgba(154,101,22,.12);
+  --hostil:#B23A2E;
+  --desf:#D27B45;
+  --neutro:#7D857F;
+  --fav:#4C8A6A;
+  --aliado:#2E6A9A;
+  --ok:#3D7A4F; --warn:#B07A12; --crit:#B23A2E;
+  --f-display:"Saira Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",Consolas,ui-monospace,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#131813;--panel:#1B221C;--ink:#E2E6DD;--muted:#9AA59C;--line:#334036;--grid:rgba(200,220,200,.045);
+  --accent:#D9A441;--accent-ink:#1A140A;--accent-soft:rgba(217,164,65,.14);
+  --hostil:#E0675A;--desf:#E59A62;--neutro:#9AA39C;--fav:#6FB28D;--aliado:#6AA6D6;
+  --ok:#6FB28D;--warn:#E0B04A;--crit:#E0675A;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131813;--panel:#1B221C;--ink:#E2E6DD;--muted:#9AA59C;--line:#334036;--grid:rgba(200,220,200,.045);
+  --accent:#D9A441;--accent-ink:#1A140A;--accent-soft:rgba(217,164,65,.14);
+  --hostil:#E0675A;--desf:#E59A62;--neutro:#9AA39C;--fav:#6FB28D;--aliado:#6AA6D6;
+  --ok:#6FB28D;--warn:#E0B04A;--crit:#E0675A;color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:32px 32px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.topo{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--panel);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+.topo-in{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.marca{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.marca b{font:700 24px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase}
+.marca span{font:500 11px/1 var(--f-mono);color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.acoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select.analise{max-width:260px;min-width:0}
+
+.btn{border:1px solid var(--line);background:transparent;border-radius:var(--r);padding:7px 12px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{filter:brightness(1.08);color:var(--accent-ink)}
+.btn.perigo:hover{border-color:var(--crit);color:var(--crit)}
+.btn.min{padding:4px 9px;font-size:12px}
+
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;
+  padding-block:28px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+nav.trilho{position:sticky;top:calc(env(safe-area-inset-top,0px) + 80px);align-self:start}
+nav.trilho ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;counter-reset:fase}
+nav.trilho a{display:grid;grid-template-columns:34px 1fr;align-items:center;padding:8px 10px;border-radius:var(--r);text-decoration:none;color:var(--muted);border-left:3px solid transparent}
+nav.trilho a .n{font:500 12px var(--f-mono)}
+nav.trilho a .t{font:600 16px/1.2 var(--f-display);letter-spacing:.03em;text-transform:uppercase}
+nav.trilho a:hover{color:var(--ink)}
+nav.trilho a[aria-current="step"]{color:var(--ink);background:var(--panel);border-left-color:var(--accent)}
+nav.trilho a .ok{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block;margin-left:6px;vertical-align:middle}
+.autor{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.autor b{display:block;color:var(--ink);font:600 15px var(--f-display);letter-spacing:.04em;text-transform:uppercase}
+
+main{min-width:0}
+.fase{display:grid;gap:22px}
+.fase>*,.duas>*,.campos>*{min-width:0}
+.cab .olho{font:500 12px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.cab h1{font:700 clamp(30px,4.4vw,44px)/1.02 var(--f-display);letter-spacing:.02em;text-transform:uppercase;margin:6px 0 10px;text-wrap:balance}
+.cab p{margin:0;max-width:66ch;color:var(--muted)}
+.doutrina{font-size:13px;color:var(--muted);border-left:2px solid var(--accent);padding:2px 0 2px 12px;max-width:66ch}
+.doutrina i{color:var(--ink)}
+
+.bloco{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.bloco h2{font:600 19px/1.2 var(--f-display);letter-spacing:.05em;text-transform:uppercase;margin:0 0 4px}
+.bloco .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
+.campos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.campos .full{grid-column:1/-1}
+label.c{display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;min-width:0}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px;font-size:14px;text-transform:none;letter-spacing:0;font-weight:400;min-width:0}
+textarea{resize:vertical;min-height:70px;line-height:1.45}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+
+.tabela{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font:600 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+td input,td select{padding:6px 8px}
+td.num,th.num{text-align:center;font-variant-numeric:tabular-nums}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.vazio{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--f-mono);padding:3px 8px;border-radius:99px;white-space:nowrap;border:1px solid currentColor}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+
+.duas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.escala{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;font-size:12px}
+.escala div{border:1px solid var(--line);border-radius:5px;padding:6px 8px;background:var(--bg)}
+.escala b{font:600 15px var(--f-mono);display:block;color:var(--accent)}
+
+svg text{fill:var(--ink);font-family:var(--f-body)}
+svg .eixo{stroke:var(--line)}
+svg .rot{fill:var(--muted);font:500 10px var(--f-mono);letter-spacing:.06em}
+
+.quad{display:grid;grid-template-columns:auto repeat(2,minmax(0,1fr));grid-template-rows:auto repeat(2,auto);gap:10px}
+.quad .ex{font:500 11px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;justify-content:center;text-align:center}
+.quad .ey{writing-mode:vertical-rl;transform:rotate(180deg)}
+.cen{border:1px solid var(--line);border-radius:var(--r);padding:12px;background:var(--bg);display:grid;gap:8px;min-width:0}
+.cen .tag{font:500 11px var(--f-mono);color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+
+.rodada{display:grid;grid-template-columns:40px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 110px 34px;gap:8px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.rodada .n{font:700 22px/1 var(--f-display);color:var(--accent);padding-top:22px}
+.rodada .x{padding-top:22px}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0}
+.kpi small{font:500 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi b{display:block;font:700 30px/1.1 var(--f-display);margin:4px 0 2px}
+.kpi span{font-size:13px;color:var(--muted)}
+.barra{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.barra i{display:block;height:100%;background:var(--accent)}
+
+.passos{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.aviso{font-size:12px;color:var(--muted)}
+.exemplo{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r);padding:10px 14px;font-size:13px}
+
+.modal{position:fixed;inset:0;background:rgba(10,14,11,.55);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal .caixa{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;max-width:560px;width:100%;display:grid;gap:12px}
+.modal h3{margin:0;font:600 20px var(--f-display);letter-spacing:.04em;text-transform:uppercase}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:13px;z-index:30}
+
+.print-only{display:none}
+@media (max-width:860px){
+  .topo{position:static}
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  nav.trilho{position:static}
+  nav.trilho ol{grid-template-columns:repeat(4,minmax(0,1fr))}
+  nav.trilho a{grid-template-columns:1fr;text-align:center;border-left:0;border-bottom:3px solid transparent;padding:6px 4px}
+  nav.trilho a[aria-current="step"]{border-bottom-color:var(--accent)}
+  nav.trilho a .t{font-size:13px}
+  .autor{display:none}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .duas{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  .campos{grid-template-columns:minmax(0,1fr)}
+  .escala{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rodada{grid-template-columns:minmax(0,1fr) 34px}
+  .rodada .n,.rodada .x{padding-top:0}
+  .rodada > :not(.n):not(.x){grid-column:1/-1}
+  .marca span{display:none}
+}
+@media (prefers-reduced-motion:no-preference){.fase{animation:surge .25s ease-out}@keyframes surge{from{opacity:.4;transform:translateY(4px)}}}
+@media print{
+  .topo,nav.trilho,.passos,.no-print,.exemplo{display:none!important}
+  body{background:#fff;color:#000}
+  .wrap{display:block;padding:0}
+  .print-only{display:block}
+  .bloco{break-inside:avoid}
+}
+</style>
+
+<header class="topo">
+  <div class="topo-in">
+    <div class="marca"><b>Mesa de Guerra</b><span>Método de decisão estratégica</span></div>
+    <div class="acoes">
+      <select class="analise" id="sel-analise" aria-label="Análise aberta"></select>
+      <button class="btn" id="b-nova">Nova análise</button>
+      <button class="btn" id="b-dup">Duplicar</button>
+      <button class="btn" id="b-export">Exportar</button>
+      <button class="btn" id="b-import">Importar</button>
+      <button class="btn" id="b-print" hidden>Imprimir / PDF</button>
+      <button class="btn perigo" id="b-del">Excluir</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="trilho" aria-label="Etapas">
+    <ol id="trilho"></ol>
+    <div class="autor"><b>Reynolds Rebelo</b>Método do projeto A Guerra Ensina. Cada etapa se apoia em doutrina pública de planejamento.</div>
+  </nav>
+  <main id="palco"></main>
+</div>
+<div id="camada"></div>
+
+<script>
+(function(){
+"use strict";
+const CHAVE='mesa-de-guerra-v1';
+const ETAPAS=[
+  {id:'missao',t:'Missão'},
+  {id:'atores',t:'Atores'},
+  {id:'gravidade',t:'Centro de gravidade'},
+  {id:'poder',t:'Poder relativo'},
+  {id:'linhas',t:'Linhas de ação'},
+  {id:'cenarios',t:'Cenários'},
+  {id:'jogo',t:'Jogo de guerra'},
+  {id:'sintese',t:'Síntese'}
+];
+const PODER=['Marginal','Limitado','Relevante','Forte','Decisivo'];
+const INTER=['Indiferente','Atento','Envolvido','Comprometido','Vital'];
+const POSTURA={'-2':'Hostil','-1':'Desfavorável','0':'Neutro','1':'Favorável','2':'Aliado'};
+const POSTURA_COR={'-2':'var(--hostil)','-1':'var(--desf)','0':'var(--neutro)','1':'var(--fav)','2':'var(--aliado)'};
+const CATEG=['Estado / governo','Organização','Empresa','Grupo / coletivo','Indivíduo','Mídia / opinião'];
+const DIME=[['D','Diplomático','alianças, apoio, legitimidade'],['I','Informacional','narrativa, audiência, inteligência'],['M','Militar','força e capacidade de execução'],['E','Econômico','recursos, caixa, meios']];
+
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function exemplo(){
+  const a=[uid(),uid(),uid(),uid(),uid()];
+  const c=[uid(),uid(),uid()];
+  const k=[uid(),uid(),uid(),uid(),uid()];
+  return {
+    id:uid(),exemplo:true,atualizado:Date.now(),
+    nome:'Exemplo — Lançamento do curso A Guerra Ensina',
+    missao:{titulo:'Lançamento do curso A Guerra Ensina',
+      objetivo:'Chegar a 300 alunos pagantes do curso A Guerra Ensina em até 6 meses após o lançamento.',
+      estadoFinal:'Curso validado, com depoimentos reais, receita recorrente e uma lista de espera para a segunda turma.',
+      prazo:'6 meses',
+      restricoes:'Orçamento de anúncios limitado. Produção feita por uma pessoa. Sem parceria com instituições oficiais.',
+      premissas:'Existe público civil interessado em estratégia aplicada. O blog e o canal crescem de forma orgânica.'},
+    atores:[
+      {id:a[0],nome:'Cursos concorrentes de estratégia',categ:'Empresa',poder:4,inter:4,postura:-1,notas:'Disputam o mesmo público e o mesmo orçamento.',dime:{D:3,I:4,M:3,E:4}},
+      {id:a[1],nome:'Comunidade militar e de segurança',categ:'Grupo / coletivo',poder:3,inter:5,postura:2,notas:'Primeiros compradores e multiplicadores.',dime:{D:4,I:3,M:2,E:2}},
+      {id:a[2],nome:'Criadores de conteúdo de história militar',categ:'Mídia / opinião',poder:4,inter:3,postura:1,notas:'Podem amplificar ou ignorar o lançamento.',dime:{D:3,I:5,M:2,E:3}},
+      {id:a[3],nome:'Plataformas de anúncio',categ:'Empresa',poder:4,inter:1,postura:0,notas:'Definem o custo de alcance.',dime:{D:2,I:5,M:2,E:5}},
+      {id:a[4],nome:'Público empreendedor',categ:'Grupo / coletivo',poder:3,inter:3,postura:0,notas:'Mercado maior, ainda frio para o tema.',dime:{D:2,I:2,M:1,E:3}}
+    ],
+    nos:{nome:'Nós (A Guerra Ensina)',dime:{D:2,I:3,M:4,E:2}},
+    gravidade:{
+      nosso:{cg:'Autoridade do autor: experiência real de comando e de ensino de estratégia.',
+        capacidades:'Produzir conteúdo com casos reais. Ensinar decisão sob pressão. Escrever com frequência.',
+        requisitos:'Tempo de produção. Audiência inicial. Prova social (depoimentos).',
+        vulnerabilidades:'Audiência ainda pequena. Tudo depende de uma pessoa. Pouca prova social no lançamento.'},
+      adversario:{atorId:a[0],cg:'Marca consolidada e base grande de alunos.',
+        capacidades:'Anunciar em escala. Lançar com frequência. Usar depoimentos antigos.',
+        requisitos:'Verba de anúncios. Renovação constante de conteúdo.',
+        vulnerabilidades:'Conteúdo genérico, sem vivência de campo. Promessas exageradas geram desconfiança.'}
+    },
+    poderAtorId:a[0],
+    criterios:[
+      {id:k[0],nome:'Adequação à missão',peso:5},
+      {id:k[1],nome:'Viabilidade com os meios atuais',peso:4},
+      {id:k[2],nome:'Baixo custo',peso:3},
+      {id:k[3],nome:'Baixo risco',peso:3},
+      {id:k[4],nome:'Velocidade de resultado',peso:2}
+    ],
+    linhas:[
+      {id:c[0],nome:'LA-1 · Conteúdo gratuito como funil',desc:'Blog e vídeos semanais levam a uma lista de e-mail, que recebe a oferta do curso.',notas:{[k[0]]:5,[k[1]]:5,[k[2]]:5,[k[3]]:4,[k[4]]:2}},
+      {id:c[1],nome:'LA-2 · Alianças com criadores',desc:'Aulas abertas em parceria com canais de história militar, com comissão por venda.',notas:{[k[0]]:4,[k[1]]:3,[k[2]]:4,[k[3]]:3,[k[4]]:4}},
+      {id:c[2],nome:'LA-3 · Ofensiva de anúncios',desc:'Campanha paga direta para a página de vendas.',notas:{[k[0]]:3,[k[1]]:3,[k[2]]:1,[k[3]]:2,[k[4]]:5}}
+    ],
+    cenarios:{
+      i1:{nome:'Custo de alcance',a:'Barato',b:'Caro'},
+      i2:{nome:'Interesse do público por estratégia',a:'Em alta',b:'Em baixa'},
+      q:[
+        {nome:'Janela aberta',desc:'Alcance barato e público curioso. Hora de acelerar.',ind:'Custo por lead abaixo de R$ 3; vídeos com mais de 20% de retenção.',linha:c[2]},
+        {nome:'Terreno difícil',desc:'Público interessado, mas anúncio caro. Vence quem tem audiência própria.',ind:'Custo por lead acima de R$ 8; comentários pedindo o curso.',linha:c[0]},
+        {nome:'Calmaria',desc:'Alcance barato, pouco interesse. Educar o mercado antes de vender.',ind:'Pouca busca pelo tema; e-mails com baixa abertura.',linha:c[1]},
+        {nome:'Cerco',desc:'Caro e frio. Preservar caixa e manter a posição.',ind:'Duas semanas seguidas sem venda.',linha:c[0]}
+      ]
+    },
+    jogo:{linha:c[0],rodadas:[
+      {acao:'Publicar 12 artigos e 8 vídeos antes de abrir as vendas.',reacao:'Concorrentes lançam uma promoção no mesmo período.',contra:'Responder com uma aula aberta ao vivo e casos reais, sem baixar preço.',ator:a[0],risco:3},
+      {acao:'Abrir as vendas para a lista com bônus para os primeiros 50.',reacao:'Público pede prova de resultado antes de comprar.',contra:'Liberar a primeira aula de graça e garantia de 7 dias.',ator:a[4],risco:2},
+      {acao:'Convidar a comunidade militar para depoimentos.',reacao:'Parte do público não quer se expor publicamente.',contra:'Usar depoimentos por iniciais e posto, com autorização.',ator:a[1],risco:2}
+    ]},
+    sintese:{decisao:'Adotar a LA-1 (conteúdo como funil) como esforço principal e a LA-2 como esforço secundário a partir do 3º mês.',
+      justificativa:'Melhor pontuação ponderada, menor custo e protege o nosso centro de gravidade: a autoridade do autor.',
+      riscos:'Velocidade baixa no início. Dependência do tempo de produção do autor.',
+      gatilhos:'Se o custo por lead ficar abaixo de R$ 3 por duas semanas, liberar verba para a LA-3.'}
+  };
+}
+function vazia(){
+  return {id:uid(),atualizado:Date.now(),nome:'Nova análise',
+    missao:{titulo:'',objetivo:'',estadoFinal:'',prazo:'',restricoes:'',premissas:''},
+    atores:[],nos:{nome:'Nós',dime:{D:3,I:3,M:3,E:3}},
+    gravidade:{nosso:{cg:'',capacidades:'',requisitos:'',vulnerabilidades:''},adversario:{atorId:'',cg:'',capacidades:'',requisitos:'',vulnerabilidades:''}},
+    poderAtorId:'',criterios:[{id:uid(),nome:'Adequação à missão',peso:5},{id:uid(),nome:'Viabilidade',peso:4},{id:uid(),nome:'Baixo risco',peso:3}],
+    linhas:[],cenarios:{i1:{nome:'',a:'',b:''},i2:{nome:'',a:'',b:''},q:[{nome:'',desc:'',ind:'',linha:''},{nome:'',desc:'',ind:'',linha:''},{nome:'',desc:'',ind:'',linha:''},{nome:'',desc:'',ind:'',linha:''}]},
+    jogo:{linha:'',rodadas:[]},sintese:{decisao:'',justificativa:'',riscos:'',gatilhos:''}};
+}
+
+/* ---------- armazenamento ---------- */
+let banco;
+function carregar(){
+  try{const r=localStorage.getItem(CHAVE);if(r){const b=JSON.parse(r);if(b&&Array.isArray(b.lista)&&b.lista.length)return b;}}catch(e){}
+  const ex=exemplo();return {atual:ex.id,lista:[ex]};
+}
+let tSalvar;
+function salvar(){clearTimeout(tSalvar);tSalvar=setTimeout(()=>{try{localStorage.setItem(CHAVE,JSON.stringify(banco))}catch(e){}},250)}
+banco=carregar();
+const A=()=>banco.lista.find(x=>x.id===banco.atual)||banco.lista[0];
+
+/* ---------- utilidades ---------- */
+function getP(o,p){return p.split('.').reduce((v,k)=>v==null?v:v[k],o)}
+function setP(o,p,val){const ks=p.split('.');let v=o;for(let i=0;i<ks.length-1;i++){if(v[ks[i]]==null)v[ks[i]]={};v=v[ks[i]]}v[ks[ks.length-1]]=val}
+const T=(p,label,ph,cls='')=>`<label class="c ${cls}">${label}<input type="text" id="f-${p}" data-b="${p}" value="${esc(getP(A(),p))}" placeholder="${esc(ph||'')}"></label>`;
+const TA=(p,label,ph,cls='')=>`<label class="c ${cls}">${label}<textarea id="f-${p}" data-b="${p}" rows="3" placeholder="${esc(ph||'')}">${esc(getP(A(),p))}</textarea></label>`;
+function selN(p,val,opts,label){return `<select id="f-${p}" data-b="${p}" data-n aria-label="${esc(label)}">${opts.map(([v,t])=>`<option value="${v}"${+v===+val?' selected':''}>${esc(t)}</option>`).join('')}</select>`}
+function selAtor(p,val,vazioTxt='Escolha um ator'){const a=A();return `<select id="f-${p}" data-b="${p}" data-re><option value="">${vazioTxt}</option>${a.atores.map(x=>`<option value="${x.id}"${x.id===val?' selected':''}>${esc(x.nome||'Sem nome')}</option>`).join('')}</select>`}
+function selLinha(p,val){const a=A();return `<select id="f-${p}" data-b="${p}" data-re><option value="">Escolha uma linha de ação</option>${a.linhas.map(x=>`<option value="${x.id}"${x.id===val?' selected':''}>${esc(x.nome||'Sem nome')}</option>`).join('')}</select>`}
+const atorPor=id=>A().atores.find(x=>x.id===id);
+const linhaPor=id=>A().linhas.find(x=>x.id===id);
+function quadrante(x){const p=x.poder>=3,i=x.inter>=3;return p&&i?['Gerenciar de perto','var(--crit)']:p?['Manter satisfeito','var(--warn)']:i?['Manter informado','var(--aliado)']:['Monitorar','var(--neutro)']}
+const prioridade=x=>x.poder*x.inter;
+function pontuacao(l){const a=A();const tp=a.criterios.reduce((s,c)=>s+(+c.peso||0),0)||1;const s=a.criterios.reduce((s,c)=>s+(+c.peso||0)*(+(l.notas||{})[c.id]||0),0);return {bruta:s,pct:Math.round(s/(tp*5)*100)}}
+function chipPostura(v){return `<span class="chip" style="color:${POSTURA_COR[v]}"><i class="dot" style="background:${POSTURA_COR[v]}"></i>${POSTURA[v]}</span>`}
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2200)}
+
+/* ---------- etapas ---------- */
+function cab(i,titulo,texto,dout){return `<div class="cab"><div class="olho">Etapa ${i+1} de ${ETAPAS.length}</div><h1>${titulo}</h1><p>${texto}</p></div>${dout?`<div class="doutrina">${dout}</div>`:''}`}
+function faixaExemplo(){return A().exemplo?`<div class="exemplo no-print"><span>Você está vendo uma <b>análise de exemplo</b>. Altere à vontade ou comece a sua.</span><button class="btn pri min" data-acao="nova">Começar minha análise</button></div>`:''}
+
+const R={};
+R.missao=()=>`${faixaExemplo()}${cab(0,'Missão','Antes de olhar para fora, defina o que você quer alcançar, até quando e com quais limites. Tudo o que vem depois é medido contra esta etapa.','<i>“A guerra é a continuação da política por outros meios.”</i> — Clausewitz. Sem objetivo político claro, não há critério para decidir.')}
+<section class="bloco"><h2>Intenção</h2><p class="sub">Escreva em frases curtas. Um objetivo que cabe em uma linha é um objetivo que todos entendem.</p>
+<div class="campos">${T('missao.titulo','Nome da análise','Ex.: Entrada no mercado do Nordeste','full')}${TA('missao.objetivo','Objetivo','O que precisa acontecer, medido como?','full')}${TA('missao.estadoFinal','Estado final desejado','Como o cenário estará quando a missão estiver cumprida?')}${TA('missao.restricoes','Restrições','O que você não pode ou não vai fazer?')}${TA('missao.premissas','Premissas','O que você está assumindo como verdade?')}${T('missao.prazo','Prazo','Ex.: 6 meses')}</div></section>`;
+
+R.atores=()=>{const a=A();const ord=[...a.atores];
+return `${faixaExemplo()}${cab(1,'Atores','Liste quem pode ajudar, atrapalhar ou decidir. Dê a cada ator uma nota de poder, de interesse e uma postura em relação à sua missão. A matriz mostra onde concentrar atenção.','Base: matriz poder × interesse (Mendelow) com a postura do ator. Prioridade = poder × interesse (1 a 25).')}
+<section class="bloco"><h2>Escalas</h2><p class="sub">Use sempre a mesma régua. Ela vale mais do que a precisão de cada nota.</p>
+<div class="duas"><div><div class="aviso" style="margin-bottom:6px">PODER · capacidade de afetar o resultado</div><div class="escala">${PODER.map((t,i)=>`<div><b>${i+1}</b>${t}</div>`).join('')}</div></div>
+<div><div class="aviso" style="margin-bottom:6px">INTERESSE · quanto o resultado importa para ele</div><div class="escala">${INTER.map((t,i)=>`<div><b>${i+1}</b>${t}</div>`).join('')}</div></div></div></section>
+<section class="bloco"><h2>Quadro de atores</h2><p class="sub">${a.atores.length} de 12 atores.</p>
+${ord.length?`<div class="tabela"><table><thead><tr><th>Ator</th><th>Categoria</th><th class="num">Poder</th><th class="num">Interesse</th><th>Postura</th><th class="num">Prioridade</th><th>Tratamento</th><th></th></tr></thead><tbody>
+${ord.map(x=>{const i=a.atores.indexOf(x);const q=quadrante(x);return `<tr><td style="min-width:200px"><input type="text" id="f-atores.${i}.nome" data-b="atores.${i}.nome" data-soft value="${esc(x.nome)}" placeholder="Nome do ator" aria-label="Nome do ator"></td>
+<td style="min-width:150px"><select id="f-atores.${i}.categ" data-b="atores.${i}.categ" aria-label="Categoria">${CATEG.map(c=>`<option${c===x.categ?' selected':''}>${c}</option>`).join('')}</select></td>
+<td class="num">${selN(`atores.${i}.poder`,x.poder,[1,2,3,4,5].map(n=>[n,n]),'Poder')}</td>
+<td class="num">${selN(`atores.${i}.inter`,x.inter,[1,2,3,4,5].map(n=>[n,n]),'Interesse')}</td>
+<td style="min-width:140px">${selN(`atores.${i}.postura`,x.postura,[-2,-1,0,1,2].map(n=>[n,(n>0?'+':'')+n+' '+POSTURA[n]]),'Postura')}</td>
+<td class="num mono"><b>${prioridade(x)}</b></td><td><span class="chip" style="color:${q[1]}">${q[0]}</span></td>
+<td><button class="btn min perigo" data-acao="rem-ator" data-i="${i}" aria-label="Remover ator">✕</button></td></tr>`}).join('')}
+</tbody></table></div>`:`<div class="vazio">Nenhum ator ainda. Comece por quem tem mais poder sobre o seu resultado.</div>`}
+<div style="margin-top:12px"><button class="btn pri" data-acao="add-ator"${a.atores.length>=12?' disabled':''}>Adicionar ator</button></div></section>
+<section class="bloco"><h2>Matriz de atores</h2><p class="sub">Canto superior direito: quem você precisa gerenciar de perto. A cor indica a postura.</p>${matriz()}
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${[-2,-1,0,1,2].map(chipPostura).join('')}</div></section>`};
+
+function matriz(){
+  const a=A();const W=560,H=420,m={l:50,r:20,t:20,b:46};const w=W-m.l-m.r,h=H-m.t-m.b;
+  const X=v=>m.l+(v-0.5)/5*w,Y=v=>m.t+h-(v-0.5)/5*h;
+  let s=`<div class="tabela"><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;min-width:420px" role="img" aria-label="Matriz de poder por interesse">`;
+  s+=`<rect x="${X(3)-w/10}" y="${m.t}" width="${m.l+w-X(3)+w/10}" height="${Y(3)+h/10-m.t}" fill="var(--accent-soft)"/>`;
+  for(let i=0;i<=5;i++){const x=m.l+i*w/5,y=m.t+i*h/5;s+=`<line class="eixo" x1="${x}" y1="${m.t}" x2="${x}" y2="${m.t+h}"/><line class="eixo" x1="${m.l}" y1="${y}" x2="${m.l+w}" y2="${y}"/>`}
+  for(let v=1;v<=5;v++){s+=`<text class="rot" x="${X(v)}" y="${m.t+h+16}" text-anchor="middle">${v}</text><text class="rot" x="${m.l-12}" y="${Y(v)+4}" text-anchor="end">${v}</text>`}
+  s+=`<text class="rot" x="${m.l+w/2}" y="${H-6}" text-anchor="middle">INTERESSE →</text><text class="rot" transform="translate(14 ${m.t+h/2}) rotate(-90)" text-anchor="middle">PODER →</text>`;
+  s+=`<text class="rot" x="${m.l+w-6}" y="${m.t+14}" text-anchor="end">GERENCIAR DE PERTO</text><text class="rot" x="${m.l+6}" y="${m.t+14}">MANTER SATISFEITO</text><text class="rot" x="${m.l+w-6}" y="${m.t+h-8}" text-anchor="end">MANTER INFORMADO</text><text class="rot" x="${m.l+6}" y="${m.t+h-8}">MONITORAR</text>`;
+  const cont={};
+  const pos=[[0,0],[-26,0],[26,0],[0,-24],[0,24],[-26,-24],[26,-24],[-26,24],[26,24]];
+  a.atores.forEach((x,i)=>{const k=x.poder+'-'+x.inter;const n=cont[k]=(cont[k]||0)+1;const o=pos[(n-1)%pos.length];
+    const cx=X(x.inter)+o[0],cy=Y(x.poder)+o[1];
+    s+=`<circle cx="${cx}" cy="${cy}" r="11" fill="${POSTURA_COR[x.postura]}" stroke="var(--panel)" stroke-width="2"><title>${esc(x.nome||'Sem nome')}</title></circle><text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="700" style="fill:var(--panel)">${i+1}</text>`});
+  s+='</svg></div>';
+  if(a.atores.length)s+=`<ol style="margin:10px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;font-size:13px">${a.atores.map((x,i)=>`<li style="display:flex;gap:8px;align-items:center"><span class="mono" style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:${POSTURA_COR[x.postura]};color:var(--panel);font-size:11px;font-weight:700;flex:none">${i+1}</span>${esc(x.nome||'Sem nome')}</li>`).join('')}</ol>`;
+  return s;
+}
+
+R.gravidade=()=>{const a=A();const g=a.gravidade;const adv=atorPor(g.adversario.atorId);
+const lado=(k,titulo,sub)=>`<section class="bloco"><h2>${titulo}</h2><p class="sub">${sub}</p><div class="campos" style="grid-template-columns:minmax(0,1fr)">
+${k==='adversario'?`<label class="c">Ator analisado${selAtor('gravidade.adversario.atorId',g.adversario.atorId)}</label>`:''}
+${TA(`gravidade.${k}.cg`,'Centro de gravidade','A fonte de força que, se perdida, faz tudo desabar')}
+${TA(`gravidade.${k}.capacidades`,'Capacidades críticas','O que essa fonte de força permite fazer')}
+${TA(`gravidade.${k}.requisitos`,'Requisitos críticos','Do que essas capacidades dependem')}
+${TA(`gravidade.${k}.vulnerabilidades`,'Vulnerabilidades críticas','Requisitos frágeis, expostos ou mal protegidos')}</div></section>`;
+return `${faixaExemplo()}${cab(2,'Centro de gravidade','Encontre a fonte de força de cada lado. Proteja a sua e procure, no adversário, o requisito mais frágil que sustenta a dele.','Base: análise de centro de gravidade de Clausewitz, no modelo capacidades → requisitos → vulnerabilidades (Joe Strange).')}
+<div class="duas">${lado('nosso','Nosso lado','Seja duro consigo mesmo: é aqui que o adversário vai mirar.')}${lado('adversario',adv?esc(adv.nome):'Adversário principal','Escolha o ator mais hostil ou mais forte do quadro.')}</div>`};
+
+R.poder=()=>{const a=A();const alvo=atorPor(a.poderAtorId);
+return `${faixaExemplo()}${cab(3,'Poder relativo','Compare o seu poder com o de cada ator em quatro instrumentos. Ninguém é forte em tudo: a vantagem está na diferença.','Base: instrumentos de poder DIME (diplomático, informacional, militar, econômico). Em contexto civil, leia “militar” como capacidade de execução.')}
+<section class="bloco"><h2>Notas por instrumento</h2><p class="sub">1 = muito fraco · 5 = dominante.</p>
+<div class="tabela"><table><thead><tr><th>Lado</th>${DIME.map(d=>`<th class="num" title="${d[2]}">${d[1]}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
+<tr><td><b>${esc(a.nos.nome)}</b></td>${DIME.map(d=>`<td class="num">${selN(`nos.dime.${d[0]}`,a.nos.dime[d[0]],[1,2,3,4,5].map(n=>[n,n]),d[1])}</td>`).join('')}<td class="num mono"><b>${DIME.reduce((s,d)=>s+ +a.nos.dime[d[0]],0)}</b></td></tr>
+${a.atores.map((x,i)=>{x.dime=x.dime||{D:3,I:3,M:3,E:3};return `<tr><td>${esc(x.nome||'Sem nome')}</td>${DIME.map(d=>`<td class="num">${selN(`atores.${i}.dime.${d[0]}`,x.dime[d[0]],[1,2,3,4,5].map(n=>[n,n]),d[1])}</td>`).join('')}<td class="num mono">${DIME.reduce((s,d)=>s+ +x.dime[d[0]],0)}</td></tr>`}).join('')}
+</tbody></table></div>${a.atores.length?'':'<div class="vazio" style="margin-top:10px">Cadastre atores na etapa 2 para compará-los.</div>'}</section>
+<section class="bloco"><h2>Comparação direta</h2><div class="campos" style="margin-bottom:12px"><label class="c">Comparar com${selAtor('poderAtorId',a.poderAtorId)}</label></div>
+<div class="duas" style="align-items:center">${radar(a.nos.dime,alvo&&alvo.dime,alvo&&alvo.nome)}<div>${alvo?balanco(a.nos.dime,alvo.dime):'<div class="vazio">Escolha um ator para ver o balanço.</div>'}</div></div></section>`};
+
+function radar(n,o,nomeO){
+  const S=300,c=S/2,R0=110;const ang=i=>-Math.PI/2+i*Math.PI/2;const pt=(i,v)=>[c+Math.cos(ang(i))*R0*v/5,c+Math.sin(ang(i))*R0*v/5];
+  let s=`<svg viewBox="0 0 ${S} ${S}" style="width:100%;max-width:320px;margin:auto;display:block" role="img" aria-label="Radar de poder">`;
+  for(let v=1;v<=5;v++)s+=`<polygon points="${[0,1,2,3].map(i=>pt(i,v).join(',')).join(' ')}" fill="none" class="eixo" stroke="var(--line)"/>`;
+  DIME.forEach((d,i)=>{const [x,y]=pt(i,5.9);s+=`<text class="rot" x="${x}" y="${y+4}" text-anchor="middle">${d[1].toUpperCase()}</text>`});
+  if(o)s+=`<polygon points="${[0,1,2,3].map(i=>pt(i,+o[DIME[i][0]]).join(',')).join(' ')}" fill="var(--hostil)" fill-opacity=".18" stroke="var(--hostil)" stroke-width="2"/>`;
+  s+=`<polygon points="${[0,1,2,3].map(i=>pt(i,+n[DIME[i][0]]).join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".25" stroke="var(--accent)" stroke-width="2"/>`;
+  s+='</svg>';
+  s+=`<div style="display:flex;gap:14px;justify-content:center;font-size:12px;margin-top:6px"><span><i class="dot" style="background:var(--accent)"></i> ${esc(A().nos.nome)}</span>${o?`<span><i class="dot" style="background:var(--hostil)"></i> ${esc(nomeO||'')}</span>`:''}</div>`;
+  return `<div>${s}</div>`;
+}
+function balanco(n,o){return `<div style="display:grid;gap:10px">${DIME.map(d=>{const df=n[d[0]]-o[d[0]];const cor=df>0?'var(--ok)':df<0?'var(--crit)':'var(--neutro)';const txt=df>0?'Vantagem nossa':df<0?'Vantagem dele':'Equilíbrio';
+return `<div style="display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center"><span style="font-weight:600">${d[1]}</span><span class="aviso">${d[2]}</span><span class="chip" style="color:${cor}">${df>0?'+':''}${df} · ${txt}</span></div>`}).join('')}
+<p class="aviso" style="margin:6px 0 0">Ataque onde a diferença é positiva. Evite o confronto onde ela é negativa.</p></div>`}
+
+R.linhas=()=>{const a=A();const rank=a.linhas.map(l=>({l,...pontuacao(l)})).sort((x,y)=>y.bruta-x.bruta);
+return `${faixaExemplo()}${cab(4,'Linhas de ação','Descreva duas ou três formas diferentes de cumprir a missão. Depois, dê nota a cada uma nos critérios que importam e deixe a matriz ordenar.','Base: comparação de linhas de ação do processo de planejamento militar. Uma boa linha de ação é adequada, exequível, aceitável, distinta e completa.')}
+<section class="bloco"><h2>Critérios e pesos</h2><p class="sub">Escreva os critérios para que nota alta seja sempre melhor (ex.: “Baixo custo”, não “Custo”).</p>
+<div class="tabela"><table><thead><tr><th>Critério</th><th class="num">Peso (1–5)</th><th></th></tr></thead><tbody>
+${a.criterios.map((c,i)=>`<tr><td><input type="text" id="f-criterios.${i}.nome" data-b="criterios.${i}.nome" data-soft value="${esc(c.nome)}" aria-label="Critério"></td><td class="num" style="width:120px">${selN(`criterios.${i}.peso`,c.peso,[1,2,3,4,5].map(n=>[n,n]),'Peso')}</td><td style="width:50px"><button class="btn min perigo" data-acao="rem-crit" data-i="${i}" aria-label="Remover critério">✕</button></td></tr>`).join('')}
+</tbody></table></div><div style="margin-top:10px"><button class="btn" data-acao="add-crit">Adicionar critério</button></div></section>
+<section class="bloco"><h2>Linhas de ação</h2>
+${a.linhas.length?a.linhas.map((l,i)=>`<div style="padding:12px 0;border-bottom:1px solid var(--line);display:grid;gap:10px">
+<div class="campos"><label class="c">Nome<input type="text" id="f-linhas.${i}.nome" data-b="linhas.${i}.nome" data-soft value="${esc(l.nome)}"></label>${TA(`linhas.${i}.desc`,'Como funciona','Quem faz o quê, quando, com quais meios')}</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">${a.criterios.map(c=>`<label class="c" style="width:140px">${esc(c.nome)}${selN(`linhas.${i}.notas.${c.id}`,(l.notas||{})[c.id]||3,[1,2,3,4,5].map(n=>[n,n]),c.nome)}</label>`).join('')}
+<button class="btn min perigo" style="margin-left:auto" data-acao="rem-linha" data-i="${i}">Remover</button></div></div>`).join(''):'<div class="vazio">Nenhuma linha de ação ainda.</div>'}
+<div style="margin-top:12px"><button class="btn pri" data-acao="add-linha">Adicionar linha de ação</button></div></section>
+<section class="bloco"><h2>Resultado da comparação</h2><p class="sub">Pontuação ponderada, em % do máximo possível.</p>
+${rank.length?`<div style="display:grid;gap:12px">${rank.map((r,i)=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 60px;gap:12px;align-items:center"><div><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px"><b>${i===0?'▲ ':''}${esc(r.l.nome||'Sem nome')}</b><span class="mono aviso">${r.bruta} pts</span></div><div class="barra"><i style="width:${r.pct}%;${i?'opacity:.55':''}"></i></div></div><b class="mono" style="font-size:18px;text-align:right">${r.pct}%</b></div>`).join('')}</div>`:'<div class="vazio">Adicione linhas de ação para comparar.</div>'}</section>`};
+
+R.cenarios=()=>{const a=A();const c=a.cenarios;
+const q=(i,ra,rb)=>`<div class="cen"><div class="tag">${esc(ra||'—')} · ${esc(rb||'—')}</div>
+<input type="text" id="f-cenarios.q.${i}.nome" data-b="cenarios.q.${i}.nome" value="${esc(c.q[i].nome)}" placeholder="Nome do cenário" aria-label="Nome do cenário" style="font-weight:600">
+<textarea id="f-cenarios.q.${i}.desc" data-b="cenarios.q.${i}.desc" rows="2" placeholder="Como é esse mundo?" aria-label="Descrição">${esc(c.q[i].desc)}</textarea>
+<textarea id="f-cenarios.q.${i}.ind" data-b="cenarios.q.${i}.ind" rows="2" placeholder="Sinais de que ele está chegando" aria-label="Indicadores">${esc(c.q[i].ind)}</textarea>
+<label class="c">Melhor linha de ação aqui${selLinha(`cenarios.q.${i}.linha`,c.q[i].linha)}</label></div>`;
+return `${faixaExemplo()}${cab(5,'Cenários','Escolha as duas incertezas que mais mudam o jogo e que você não controla. O cruzamento delas gera quatro futuros possíveis. Prepare-se para todos e vigie os sinais de cada um.','Base: planejamento por cenários com eixos de incertezas críticas. <i>“Planos não são nada; planejar é tudo.”</i> — Eisenhower.')}
+<section class="bloco"><h2>Incertezas críticas</h2><div class="campos">
+<div style="display:grid;gap:8px">${T('cenarios.i1.nome','Incerteza 1 (horizontal)','Ex.: Custo de alcance')}<div class="campos">${T('cenarios.i1.a','Extremo A','Barato')}${T('cenarios.i1.b','Extremo B','Caro')}</div></div>
+<div style="display:grid;gap:8px">${T('cenarios.i2.nome','Incerteza 2 (vertical)','Ex.: Interesse do público')}<div class="campos">${T('cenarios.i2.a','Extremo A','Em alta')}${T('cenarios.i2.b','Extremo B','Em baixa')}</div></div></div></section>
+<section class="bloco"><h2>Quatro futuros</h2><p class="sub">Linhas: ${esc(c.i2.nome||'incerteza 2')}. Colunas: ${esc(c.i1.nome||'incerteza 1')}.</p>
+<div class="tabela"><div class="quad" style="min-width:560px"><div></div><div class="ex">${esc(c.i1.a||'Extremo A')}</div><div class="ex">${esc(c.i1.b||'Extremo B')}</div>
+<div class="ex ey">${esc(c.i2.a||'Extremo A')}</div>${q(0,c.i1.a,c.i2.a)}${q(1,c.i1.b,c.i2.a)}
+<div class="ex ey">${esc(c.i2.b||'Extremo B')}</div>${q(2,c.i1.a,c.i2.b)}${q(3,c.i1.b,c.i2.b)}</div></div></section>`};
+
+R.jogo=()=>{const a=A();const j=a.jogo;const l=linhaPor(j.linha);const media=j.rodadas.length?(j.rodadas.reduce((s,r)=>s+ +r.risco,0)/j.rodadas.length):0;
+return `${faixaExemplo()}${cab(6,'Jogo de guerra','Teste a linha de ação escolhida contra a reação dos outros atores, rodada por rodada. Cada rodada tem a sua ação, a reação mais provável e a sua resposta.','Base: jogo de guerra em ciclo ação → reação → contrarreação. <i>“Nenhum plano resiste intacto ao primeiro contato com o inimigo.”</i> — Moltke.')}
+<section class="bloco"><h2>Linha de ação em teste</h2><div class="campos"><label class="c">Linha de ação${selLinha('jogo.linha',j.linha)}</label>
+<div class="kpi" style="background:var(--bg)"><small>Risco médio das rodadas</small><b style="color:${media>=4?'var(--crit)':media>=3?'var(--warn)':'var(--ok)'}">${media?media.toFixed(1):'—'}<span style="font-size:16px"> / 5</span></b><span>${l?esc(l.desc||''):'Escolha uma linha de ação.'}</span></div></div></section>
+<section class="bloco"><h2>Rodadas</h2>
+${j.rodadas.length?j.rodadas.map((r,i)=>`<div class="rodada"><div class="n">${String(i+1).padStart(2,'0')}</div>
+<label class="c">Nossa ação<textarea id="f-jogo.rodadas.${i}.acao" data-b="jogo.rodadas.${i}.acao" rows="3">${esc(r.acao)}</textarea></label>
+<label class="c">Reação provável${selAtor(`jogo.rodadas.${i}.ator`,r.ator,'Quem reage?')}<textarea id="f-jogo.rodadas.${i}.reacao" data-b="jogo.rodadas.${i}.reacao" rows="2">${esc(r.reacao)}</textarea></label>
+<label class="c">Nossa contrarreação<textarea id="f-jogo.rodadas.${i}.contra" data-b="jogo.rodadas.${i}.contra" rows="3">${esc(r.contra)}</textarea></label>
+<label class="c">Risco${selN(`jogo.rodadas.${i}.risco`,r.risco,[[1,'1 Baixo'],[2,'2 Contido'],[3,'3 Sério'],[4,'4 Alto'],[5,'5 Crítico']],'Risco')}</label>
+<div class="x"><button class="btn min perigo" data-acao="rem-rodada" data-i="${i}" aria-label="Remover rodada">✕</button></div></div>`).join(''):'<div class="vazio">Nenhuma rodada ainda. Comece pela primeira ação que você tomaria.</div>'}
+<div style="margin-top:12px"><button class="btn pri" data-acao="add-rodada">Adicionar rodada</button></div></section>`};
+
+R.sintese=()=>{const a=A();const rank=a.linhas.map(l=>({l,...pontuacao(l)})).sort((x,y)=>y.bruta-x.bruta);const top=[...a.atores].sort((x,y)=>prioridade(y)-prioridade(x)).slice(0,4);
+const hostis=a.atores.filter(x=>x.postura<0).length,aliados=a.atores.filter(x=>x.postura>0).length;const j=a.jogo;const media=j.rodadas.length?(j.rodadas.reduce((s,r)=>s+ +r.risco,0)/j.rodadas.length):0;
+const adv=atorPor(a.gravidade.adversario.atorId);
+return `${faixaExemplo()}${cab(7,'Síntese','A análise inteira em uma página, pronta para apresentar. Feche com a decisão, o porquê e o que faria você mudar de ideia.','')}
+<div class="print-only"><h2>${esc(a.missao.titulo||a.nome)}</h2><p>${esc(a.missao.objetivo)}</p></div>
+<div class="kpis">
+<div class="kpi"><small>Atores mapeados</small><b>${a.atores.length}</b><span>${aliados} favoráveis · ${hostis} contrários</span></div>
+<div class="kpi"><small>Melhor linha de ação</small><b>${rank[0]?rank[0].pct+'%':'—'}</b><span>${rank[0]?esc(rank[0].l.nome):'Nenhuma ainda'}</span></div>
+<div class="kpi"><small>Risco no jogo de guerra</small><b style="color:${media>=4?'var(--crit)':media>=3?'var(--warn)':'var(--ok)'}">${media?media.toFixed(1):'—'}</b><span>${j.rodadas.length} rodadas testadas</span></div>
+<div class="kpi"><small>Prazo</small><b>${esc(a.missao.prazo||'—')}</b><span>${esc((a.missao.titulo||'').slice(0,40))}</span></div></div>
+<div class="duas">
+<section class="bloco"><h2>Missão</h2><p style="margin:0 0 8px">${esc(a.missao.objetivo)||'<span class="aviso">Preencha a etapa 1.</span>'}</p><p class="aviso" style="margin:0"><b>Estado final:</b> ${esc(a.missao.estadoFinal)||'—'}</p></section>
+<section class="bloco"><h2>Atores prioritários</h2>${top.length?`<div style="display:grid;gap:8px">${top.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span>${esc(x.nome)}</span><span style="display:flex;gap:6px;align-items:center"><span class="mono aviso">${prioridade(x)}</span>${chipPostura(x.postura)}</span></div>`).join('')}</div>`:'<span class="aviso">Nenhum ator.</span>'}</section>
+<section class="bloco"><h2>Centros de gravidade</h2><p style="margin:0 0 8px"><b>Nosso:</b> ${esc(a.gravidade.nosso.cg)||'—'}</p><p style="margin:0 0 8px"><b>${adv?esc(adv.nome):'Adversário'}:</b> ${esc(a.gravidade.adversario.cg)||'—'}</p><p class="aviso" style="margin:0"><b>Onde atacar:</b> ${esc(a.gravidade.adversario.vulnerabilidades)||'—'}</p></section>
+<section class="bloco"><h2>Cenários e linha preferida</h2><div style="display:grid;gap:6px">${a.cenarios.q.map(q=>{const l=linhaPor(q.linha);return `<div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(q.nome||'—')}</b><span class="aviso" style="text-align:right">${l?esc(l.nome):'—'}</span></div>`}).join('')}</div></section></div>
+<section class="bloco"><h2>Decisão</h2><div class="campos">${TA('sintese.decisao','Decisão','O que será feito','full')}${TA('sintese.justificativa','Por quê','O que a análise mostrou')}${TA('sintese.riscos','Riscos aceitos','O que pode dar errado e você aceita')}${TA('sintese.gatilhos','Gatilhos de revisão','Que sinal faria você mudar de linha de ação?','full')}</div></section>
+<p class="aviso">Mesa de Guerra · método de Reynolds Rebelo · A Guerra Ensina</p>`};
+
+/* ---------- navegação e render ---------- */
+function etapaAtual(){const h=(location.hash||'').slice(1);return ETAPAS.some(e=>e.id===h)?h:'missao'}
+function preenchida(id){const a=A();switch(id){case'missao':return !!a.missao.objetivo;case'atores':return a.atores.length>0;case'gravidade':return !!(a.gravidade.nosso.cg&&a.gravidade.adversario.cg);case'poder':return !!a.poderAtorId;case'linhas':return a.linhas.length>1;case'cenarios':return a.cenarios.q.every(q=>q.nome);case'jogo':return a.jogo.rodadas.length>0;case'sintese':return !!a.sintese.decisao}}
+function render(){
+  const id=etapaAtual();const i=ETAPAS.findIndex(e=>e.id===id);
+  document.getElementById('trilho').innerHTML=ETAPAS.map((e,k)=>`<li><a href="#${e.id}"${e.id===id?' aria-current="step"':''}><span class="n">${String(k+1).padStart(2,'0')}${preenchida(e.id)?'<i class="ok" title="Preenchida"></i>':''}</span><span class="t">${e.t}</span></a></li>`).join('');
+  const ant=ETAPAS[i-1],prox=ETAPAS[i+1];
+  document.getElementById('palco').innerHTML=`<div class="fase">${R[id]()}<div class="passos">${ant?`<a class="btn" href="#${ant.id}">← ${ant.t}</a>`:'<span></span>'}${prox?`<a class="btn pri" href="#${prox.id}">${prox.t} →</a>`:''}</div></div>`;
+  const s=document.getElementById('sel-analise');
+  s.innerHTML=banco.lista.map(x=>`<option value="${x.id}"${x.id===banco.atual?' selected':''}>${esc(x.missao.titulo||x.nome)}</option>`).join('');
+}
+function reRender(){const y=window.scrollY;const f=document.activeElement&&document.activeElement.id;render();window.scrollTo(0,y);if(f){const el=document.getElementById(f);if(el)el.focus()}}
+window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0)});
+
+/* ---------- edição ---------- */
+const palco=document.getElementById('palco');
+function tocar(){const a=A();a.atualizado=Date.now();salvar()}
+palco.addEventListener('input',e=>{const el=e.target;const p=el.dataset.b;if(!p||el.tagName==='SELECT')return;setP(A(),p,el.value);if(p==='missao.titulo'){A().nome=el.value||'Análise sem nome';const o=document.querySelector(`#sel-analise option[value="${A().id}"]`);if(o)o.textContent=el.value||'Análise sem nome'}tocar()});
+palco.addEventListener('change',e=>{const el=e.target;const p=el.dataset.b;if(!p)return;setP(A(),p,'n' in el.dataset?+el.value:el.value);tocar();if(el.tagName==='SELECT'||'soft' in el.dataset)reRender()});
+palco.addEventListener('click',e=>{const b=e.target.closest('[data-acao]');if(!b)return;const a=A();const i=+b.dataset.i;
+  switch(b.dataset.acao){
+    case'add-ator':a.atores.push({id:uid(),nome:'',categ:CATEG[1],poder:3,inter:3,postura:0,notas:'',dime:{D:3,I:3,M:3,E:3}});break;
+    case'rem-ator':{const id=a.atores[i].id;a.atores.splice(i,1);if(a.poderAtorId===id)a.poderAtorId='';if(a.gravidade.adversario.atorId===id)a.gravidade.adversario.atorId='';break}
+    case'add-crit':a.criterios.push({id:uid(),nome:'Novo critério',peso:3});break;
+    case'rem-crit':a.criterios.splice(i,1);break;
+    case'add-linha':a.linhas.push({id:uid(),nome:'LA-'+(a.linhas.length+1)+' · ',desc:'',notas:{}});break;
+    case'rem-linha':a.linhas.splice(i,1);break;
+    case'add-rodada':a.jogo.rodadas.push({acao:'',reacao:'',contra:'',ator:'',risco:3});break;
+    case'rem-rodada':a.jogo.rodadas.splice(i,1);break;
+    case'nova':return novaAnalise();
+  }
+  tocar();reRender();
+});
+
+/* ---------- barra superior ---------- */
+function novaAnalise(){const n=vazia();banco.lista.unshift(n);banco.atual=n.id;salvar();location.hash='missao';render();toast('Nova análise criada')}
+document.getElementById('b-nova').onclick=novaAnalise;
+document.getElementById('sel-analise').onchange=e=>{banco.atual=e.target.value;salvar();render()};
+document.getElementById('b-dup').onclick=()=>{const c=JSON.parse(JSON.stringify(A()));c.id=uid();delete c.exemplo;c.missao.titulo=(c.missao.titulo||c.nome)+' (cópia)';c.nome=c.missao.titulo;banco.lista.unshift(c);banco.atual=c.id;salvar();render();toast('Análise duplicada')};
+const camada=document.getElementById('camada');
+function modal(html){camada.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><div class="caixa">${html}</div></div>`;camada.querySelector('[data-fechar]')?.addEventListener('click',()=>camada.innerHTML='');}
+document.getElementById('b-del').onclick=()=>{modal(`<h3>Excluir análise?</h3><p style="margin:0">“${esc(A().missao.titulo||A().nome)}” será apagada deste navegador. Não dá para desfazer.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="ok-del" style="background:var(--crit);border-color:var(--crit)">Excluir</button></div>`);
+  document.getElementById('ok-del').onclick=()=>{banco.lista=banco.lista.filter(x=>x.id!==banco.atual);if(!banco.lista.length)banco.lista=[vazia()];banco.atual=banco.lista[0].id;salvar();camada.innerHTML='';render();toast('Análise excluída')}};
+document.getElementById('b-export').onclick=()=>{const txt=JSON.stringify(A(),null,1);
+  modal(`<h3>Exportar análise</h3><p class="aviso" style="margin:0">Copie o texto e guarde num arquivo. Para abrir de novo, use Importar.</p><textarea id="t-exp" rows="10" readonly style="font:12px var(--f-mono)">${esc(txt)}</textarea><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-fechar>Fechar</button><button class="btn pri" id="b-copiar">Copiar</button></div>`);
+  document.getElementById('b-copiar').onclick=()=>{const t=document.getElementById('t-exp');navigator.clipboard.writeText(txt).then(()=>toast('Copiado'),()=>{t.focus();t.select();toast('Selecionado: use Ctrl+C')})}};
+document.getElementById('b-import').onclick=()=>{modal(`<h3>Importar análise</h3><p class="aviso" style="margin:0">Cole o texto exportado ou escolha um arquivo .json.</p><textarea id="t-imp" rows="8" style="font:12px var(--f-mono)" placeholder='{"missao": …}'></textarea><input type="file" id="f-imp" accept=".json,.txt,application/json"><p class="aviso" id="m-imp" style="margin:0;color:var(--crit)"></p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="ok-imp">Importar</button></div>`);
+  document.getElementById('f-imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>document.getElementById('t-imp').value=r.result;r.readAsText(f)};
+  document.getElementById('ok-imp').onclick=()=>{try{const o=JSON.parse(document.getElementById('t-imp').value);if(!o||!o.missao||!Array.isArray(o.atores))throw 0;const base=vazia();const n=Object.assign(base,o,{id:uid()});delete n.exemplo;banco.lista.unshift(n);banco.atual=n.id;salvar();camada.innerHTML='';render();toast('Análise importada')}catch(e){document.getElementById('m-imp').textContent='Esse texto não é uma análise da Mesa de Guerra. Confira se copiou tudo, do primeiro { ao último }.'}}};
+
+/* imprimir só fora do visualizador (o arquivo aberto direto no navegador) */
+let solto=false;try{solto=window.self===window.top}catch(e){}
+if(solto){const bp=document.getElementById('b-print');bp.hidden=false;bp.onclick=()=>{location.hash='sintese';setTimeout(()=>window.print(),300)}}
+
+render();
+})();
+</script>

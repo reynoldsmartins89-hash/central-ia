@@ -66,7 +66,9 @@ class Agente:
         mensagem = f"## Tarefa\n{tarefa}"
         if self.base:
             from . import conhecimento, leitor
-            trechos = conhecimento.buscar(self.nome, busca)
+            # base "curadoria:<nome>": usa a biblioteca curada com esse nome (vários agentes podem compartilhá-la)
+            biblioteca = self.base.removeprefix("curadoria:") if self.base.startswith("curadoria:") else self.nome
+            trechos = conhecimento.buscar(biblioteca, busca)
             # material que não é texto (áudio, vídeo, imagem, compactados) vem das fichas do Agente Leitor
             trechos += leitor.buscar(busca, limite=max(2, 8 - len(trechos)), prefixo=self.base)
             if trechos:

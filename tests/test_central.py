@@ -205,6 +205,53 @@ class TestCentral(unittest.TestCase):
             self.assertTrue(achado and "::modulo1/aula.md" in achado[0]["caminho"])
             self.assertFalse((raiz / "_central_ia_temp").exists() and any((raiz / "_central_ia_temp").iterdir()))
 
+    def test_idiomas_primeiro_e_copia_para_o_drive(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import curador, idiomas, leitor
+        with tempfile.TemporaryDirectory() as tmp:
+            hd, drive = Path(tmp) / "IDIOMAS", Path(tmp) / "Drive" / "Idiomas"
+            (hd / "LATIM" / "curso").mkdir(parents=True)
+            (Path(tmp) / "outros").mkdir()
+            drive.parent.mkdir()                                     # "Drive montado"
+            (Path(tmp) / "outros" / "a.md").write_text("Curto.", encoding="utf-8")   # menor, mas não é idioma
+            (hd / "LATIM" / "curso" / "aula 1.md").write_text("Declinações latinas: rosa, rosae, rosam.",
+                                                              encoding="utf-8")
+            curador.PASTA = Path(tmp) / "estado"
+            curador.CATALOGO = curador.PASTA / "catalogo.db"
+            leitor.PASTA_LEITURAS = Path(tmp) / "leituras"
+            idiomas.HD, idiomas.DRIVE = hd, drive
+            self.assertEqual(idiomas.destino(str(hd / "LATIM" / "x.rar") + "::m1/aula.mp3"),
+                             drive / "Latim" / "x.rar" / "m1" / "aula.mp3.md")
+            self.assertIsNone(idiomas.destino(str(Path(tmp) / "outros" / "a.md")))
+            curador.catalogar(Path(tmp), log=lambda *_: None)
+            leitor.processar(limite=1, log=lambda *_: None)          # só 1 arquivo: tem de ser o de idioma
+            self.assertEqual(idiomas.espelhar(log=lambda *_: None)["copiadas"], 1)
+            md = drive / "Latim" / "curso" / "aula 1.md.md"
+            self.assertIn("rosae", md.read_text(encoding="utf-8"))
+            self.assertEqual(idiomas.espelhar(log=lambda *_: None)["copiadas"], 0)   # retomável
+            self.assertIn("| Latim | 1 | 1 |", (drive / "_Progresso.md").read_text(encoding="utf-8"))
+
+            # lembrete ao ligar o PC: só retoma com o SIM; quando acaba tudo, remove a si mesmo
+            idiomas.LEMBRETE = Path(tmp) / "Startup" / "lembrete.bat"
+            idiomas.LEMBRETE.parent.mkdir()
+            idiomas.LEMBRETE.write_text("x")
+            (hd / "LATIM" / "curso" / "aula 2.md").write_text("Segunda declinação: dominus, domini.",
+                                                              encoding="utf-8")
+            curador.catalogar(Path(tmp), log=lambda *_: None)
+            ligou, avisos = [], []
+            self.assertEqual(idiomas.lembrete(perguntar=lambda t: False, ligar=lambda: ligou.append(1),
+                                              avisar=avisos.append), "pausado")
+            self.assertFalse(ligou)
+            self.assertIn("Faltam 1 arquivos", avisos[0])
+            self.assertEqual(idiomas.lembrete(perguntar=lambda t: True, ligar=lambda: ligou.append(1),
+                                              avisar=avisos.append), "retomado")
+            self.assertEqual(ligou, [1])
+            leitor.processar(log=lambda *_: None, primeiro=[str(hd / "LATIM")])
+            self.assertEqual(idiomas.lembrete(perguntar=lambda t: True, ligar=lambda: ligou.append(1),
+                                              avisar=avisos.append), "concluido")
+            self.assertFalse(idiomas.LEMBRETE.exists())
+
     def test_combinacoes_existem(self):
         from superagente.agentes import carregar_combinacoes
         combos = carregar_combinacoes()
@@ -494,3 +541,212 @@ class TestRoteador(unittest.TestCase):
         self.assertEqual(profundidade("quanto é 15% de 300?"), "rapido")
         self.assertEqual(profundidade("explique a doutrina do preço justo em São Tomás e compare com Salamanca"),
                          "profundo")
+
+
+class TestGerenciadorEmails(unittest.TestCase):
+    """Sem rede: um servidor IMAP falso confere que nada é apagado e que ler não marca como lido."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from superagente import emails
+        self.emails = emails
+        self.tmp = tempfile.mkdtemp()
+        self._orig = (emails.BANCO, emails.PASTA_SAIDA, emails.conectar)
+        emails.BANCO = Path(self.tmp) / "emails.db"
+        emails.PASTA_SAIDA = Path(self.tmp) / "saida"
+
+    def tearDown(self):
+        self.emails.BANCO, self.emails.PASTA_SAIDA, self.emails.conectar = self._orig
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_nome_de_pasta_com_acento_ida_e_volta(self):
+        e = self.emails
+        self.assertEqual(e.utf7_codificar("Promoções"), "Promo&AOcA9Q-es")
+        for nome in ("Promoções", "A & B", "Central/10 Promoções", "Notificações", "日本"):
+            self.assertEqual(e.utf7_decodificar(e.utf7_codificar(nome)), nome)
+
+    def test_le_linha_list(self):
+        flags, delim, nome = self.emails.analisar_list(rb'(\HasNoChildren) "/" "Faculdade/USP 2019"')
+        self.assertEqual((delim, nome), ("/", "Faculdade/USP 2019"))
+        self.assertIn(r"\Noselect", self.emails.analisar_list(rb'(\Noselect) "/" "[Gmail]"')[0])
+
+    def test_regras_de_reserva(self):
+        r = self.emails.classificar_por_regras
+        self.assertEqual(r({"de_email": "secretaria@funib.edu.br", "assunto": "Notas"})[0], "faculdade")
+        self.assertEqual(r({"de_email": "loja@x.com", "assunto": "50% OFF só hoje",
+                            "sinais": "descadastrar"})[0], "promocoes")
+        self.assertEqual(r({"de_email": "fulano@gmail.com", "assunto": "Oi"})[0], "revisar")
+        self.assertNotEqual(r({"de_email": "a@b.com", "assunto": "Conta suspensa"})[0], "faculdade")
+
+    def test_caixa_de_entrada_guarda_so_o_que_pede_voce(self):
+        d = self.emails.destino
+        base = {"pasta": "INBOX", "confianca": 0.9, "acao": 0}
+        self.assertEqual(d({**base, "categoria": "promocoes"}), "10 Promoções")
+        self.assertEqual(d({**base, "categoria": "importante"}), "")
+        self.assertEqual(d({**base, "categoria": "faculdade", "acao": 1}), "")
+        self.assertEqual(d({**base, "categoria": "promocoes", "confianca": 0.5}), "")
+
+    def test_ler_classificar_mover_e_desfazer_sem_apagar(self):
+        e = self.emails
+        servidor = _ImapFalso()
+        e.conectar = lambda conta: servidor
+        conta = {"id": "YAHOO", "rotulo": "Yahoo", "endereco": "x@y", "senha": "s", "servidor": "-"}
+        self.assertEqual(e.ler(conta, log=lambda *_: None), 3)
+        self.assertTrue(all("PEEK" in c for c in servidor.fetches))
+        self.assertEqual(e.classificar(conta, usar_ia=False, log=lambda *_: None), 3)
+        movidos = e.aplicar(conta, log=lambda *_: None)
+        self.assertEqual(movidos, 2)  # promoção + faculdade; o e-mail pessoal fica
+        self.assertEqual(sorted(servidor.caixas), ["Central", "Central/02 Faculdade", "Central/10 Promo&AOcA9Q-es",
+                                                   "INBOX"])
+        self.assertEqual(sum(len(v) for v in servidor.caixas.values()), 3)  # nada sumiu
+        self.assertFalse(servidor.apagou)
+        self.assertTrue(e.painel(abrir=False).exists())
+        self.assertEqual(e.desfazer(conta, log=lambda *_: None), 2)
+        self.assertEqual(len(servidor.caixas["INBOX"]), 3)
+
+
+def _mensagem(remetente, assunto, extra=""):
+    return (f"From: {remetente}\r\nSubject: {assunto}\r\nMessage-ID: <{abs(hash(assunto))}@t>\r\n"
+            f"Date: Tue, 10 Nov 2026 10:00:00 -0300\r\n{extra}Content-Type: text/plain; charset=utf-8\r\n\r\n"
+            f"Corpo de {assunto}").encode()
+
+
+class _ImapFalso:
+    def __init__(self):
+        self.caixas = {"INBOX": {1: _mensagem("Loja <oferta@loja.com>", "Cupom 30% OFF",
+                                              "List-Unsubscribe: <mailto:sair@loja.com>\r\n"),
+                                 2: _mensagem("FUNIB <secretaria@funib.edu.br>", "Calendário de provas"),
+                                 3: _mensagem("Maria <maria@gmail.com>", "Almoço domingo?")}}
+        self.atual, self.fetches, self.apagou, self.proximo = "INBOX", [], False, 100
+
+    def _nome(self, n):
+        return n.strip('"').replace('\\"', '"')
+
+    def select(self, nome, readonly=False):
+        self.atual = self._nome(nome)
+        return ("OK", [b"1"]) if self.atual in self.caixas else ("NO", [b""])
+
+    def response(self, codigo):
+        return codigo, [b"7"]
+
+    def capability(self):
+        return "OK", [b"IMAP4rev1 MOVE UIDPLUS"]
+
+    def list(self):
+        return "OK", [rf'(\HasNoChildren) "/" "{n}"'.encode() for n in self.caixas]
+
+    def create(self, nome):
+        self.caixas.setdefault(self._nome(nome), {})
+        return "OK", [b""]
+
+    def subscribe(self, nome):
+        return "OK", [b""]
+
+    def logout(self):
+        pass
+
+    def uid(self, comando, *args):
+        caixa = self.caixas[self.atual]
+        if comando == "SEARCH":
+            if args[1] == "ALL":
+                return "OK", [" ".join(map(str, caixa)).encode()]
+            alvo = self._nome(args[3])
+            return "OK", [" ".join(str(u) for u, m in caixa.items() if alvo.encode() in m).encode()]
+        if comando == "FETCH":
+            self.fetches.append(args[1])
+            dados = []
+            for u in map(int, args[0].split(",")):
+                dados += [(f"{u} (UID {u} BODY[]<0> {{{len(caixa[u])}}}".encode(), caixa[u]), b" FLAGS ())"]
+            return "OK", dados
+        if comando == "MOVE":
+            destino = self._nome(args[1])
+            for u in map(int, args[0].split(",")):
+                self.caixas[destino][self.proximo] = caixa.pop(u)
+                self.proximo += 1
+            return "OK", [b""]
+        if comando in ("STORE", "EXPUNGE"):
+            self.apagou = True
+        return "NO", [b""]
+
+
+class TestAprovacaoTardia(unittest.TestCase):
+    """Cliques em ✅ depois do prazo não podem ser ignorados em silêncio."""
+
+    def setUp(self):
+        import tempfile
+        from superagente import telegram
+        self.tg = telegram
+        self.tmp = tempfile.mkdtemp()
+        self.original = telegram.ARQUIVO_EXPIRADOS
+        telegram.ARQUIVO_EXPIRADOS = f"{self.tmp}/planos_expirados.json"
+
+    def tearDown(self):
+        self.tg.ARQUIVO_EXPIRADOS = self.original
+        self.tg.APROVACAO_ANTECIPADA = False
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_plano_expirado_e_retomado_uma_vez(self):
+        self.tg.guardar_expirado("123", "crie três agentes")
+        self.assertEqual(self.tg.retomar_expirado("123"), "crie três agentes")
+        self.assertEqual(self.tg.retomar_expirado("123"), "")
+
+    def test_aprovacao_antecipada_passa_direto(self):
+        from unittest import mock
+        self.tg.APROVACAO_ANTECIPADA = True
+        with mock.patch.object(self.tg, "enviar") as enviar, mock.patch.object(self.tg, "atualizacoes") as att:
+            self.assertTrue(self.tg.pedir_aprovacao("plano"))
+            att.assert_not_called()
+            enviar.assert_called_once()
+        self.assertFalse(self.tg.APROVACAO_ANTECIPADA)
+
+    def test_clique_tardio_refaz_o_pedido(self):
+        from unittest import mock
+        from superagente import bot
+        self.tg.guardar_expirado("999", "pedido antigo")
+        cb = {"id": "x", "data": "sim:999", "message": {"chat": {"id": 42}}}
+        with mock.patch.object(self.tg, "_api"), mock.patch.object(self.tg, "enviar"), \
+                mock.patch.object(bot, "tratar") as tratar:
+            bot._clique_tardio(cb, "42")
+            tratar.assert_called_once_with("pedido antigo")
+
+    def test_clique_tardio_sem_plano_avisa(self):
+        from unittest import mock
+        from superagente import bot
+        cb = {"id": "x", "data": "sim:000", "message": {"chat": {"id": 42}}}
+        with mock.patch.object(self.tg, "_api"), mock.patch.object(self.tg, "enviar") as enviar, \
+                mock.patch.object(bot, "tratar") as tratar:
+            bot._clique_tardio(cb, "42")
+            tratar.assert_not_called()
+            self.assertIn("Mande o pedido de novo", enviar.call_args[0][0])
+
+
+class TestExportarCuradoria(unittest.TestCase):
+    def test_exporta_aprovados_em_md_sem_duplicar(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from superagente import curadoria
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            banco = tmp / "lider.db"
+            con = sqlite3.connect(banco)
+            con.execute("CREATE TABLE trechos (texto, titulo, caminho)")
+            con.executemany("INSERT INTO trechos VALUES (?, ?, ?)", [
+                ("Liderar é servir.", "Liderança: servir", "D:/a.pdf"),
+                ("Segunda parte.", "Liderança: servir", "D:/a.pdf"),
+                ("Liderar é servir.", "Cópia", "drive:DUPLICADOS/a.pdf"),
+                ("Comando e controle.", "Comando", "drive:EBOOKS/c.pdf")])
+            con.commit()
+            con.close()
+            with mock.patch("superagente.conhecimento._caminho_indice", return_value=banco):
+                n = curadoria.exportar_md("lider", str(tmp / "saida"), log=lambda *_: None)
+            self.assertEqual(n, 3)   # o duplicado só tem o 1º trecho igual, mas o corpo inteiro difere
+            nomes = sorted(p.name for p in (tmp / "saida").glob("*.md"))
+            self.assertIn("Liderança servir.md", nomes)
+            texto = (tmp / "saida" / "Liderança servir.md").read_text(encoding="utf-8")
+            self.assertIn("Segunda parte.", texto)
+            self.assertIn("Origem: `D:/a.pdf`", texto)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

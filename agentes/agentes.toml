@@ -254,6 +254,39 @@ modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "
 # O superagente usa estas equipes quando o pedido combina com o "quando".
 # Você pode criar novas: liste os agentes e descreva em que situação trabalham juntos.
 
+
+[agentes.lider]
+descricao = "Agente Líder: mentor de liderança (militar, empresarial, pública e cristã) — comando, chefia, gestão de pessoas e equipes, decisão, crise e caráter do líder, fundamentado nos seus materiais de liderança lidos pelo conteúdo (HDs e Drive; cópia em .md na pasta Agente_Lideranca do Drive)."
+habilidade = "conhecimento/lider"
+base = "curadoria:lider"
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
+[agentes.imigracao_espanha]
+descricao = "Consultor de imigração de brasileiros para a ESPANHA: vistos (nômade digital, trabalho, estudo, não lucrativo, arraigo), residência, cidadania em 2 anos para brasileiros, custos, documentos e plano passo a passo."
+habilidade = "conhecimento/imigracao-espanha"
+base = "curadoria:mentor_imigracao"   # compartilha a biblioteca de imigração
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
+[agentes.imigracao_eua]
+descricao = "Consultor de imigração de brasileiros para os EUA: vistos de trabalho e estudo (H-1B, L-1, O-1, F-1, E-2 via cidadania de tratado), green card (EB-2 NIW, EB-1, família, loteria), riscos, custos e plano passo a passo."
+habilidade = "conhecimento/imigracao-eua"
+base = "curadoria:mentor_imigracao"   # compartilha a biblioteca de imigração
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
+[agentes.imigracao_panorama]
+descricao = "Consultor que mapeia e compara as imigrações mais vantajosas para brasileiros no mundo: países, rotas, custos, prazos até a cidadania, renda exigida e o melhor caminho para cada perfil (inclusive sem capital investido)."
+habilidade = "conhecimento/imigracao-panorama"
+base = "curadoria:mentor_imigracao"   # compartilha a biblioteca de imigração
+privacidade = "nuvem"
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
+acervo = true
+
 [combinacoes.conteudo_digital]
 agentes = ["marketing_digital", "comunicacao", "redator", "social", "orientador_linkedin", "revisor"]
 quando = "criar, divulgar ou vender com conteúdo: posts, campanhas, newsletter, lançamentos, copy, presença nas redes"
@@ -377,3 +410,7 @@ quando = "aprender, revisar, traduzir ou praticar idiomas; plano de estudos; com
 [combinacoes.traducao_e_conteudo_internacional]
 agentes = ["poliglota", "redator", "revisor"]
 quando = "traduzir artigos/materiais, usar fontes em outros idiomas, publicar para público estrangeiro"
+
+[combinacoes.consultoria_de_imigracao]
+agentes = ["imigracao_panorama", "imigracao_espanha", "imigracao_eua", "mentor_imigracao"]
+quando = "imigrar, morar fora, vistos, cidadania, comparar países (use só os consultores dos países em questão)"

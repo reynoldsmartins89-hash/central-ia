@@ -519,7 +519,11 @@ def rodar() -> None:
     while True:
         try:
             if papel == "pc_com_caixa" and time.time() - ultima_busca > caixa_postal.PC_AUSENTE_APOS:
-                caixa_postal.baixar_memoria()   # o PC dormiu: a nuvem pode ter conversado nesse meio-tempo
+                ultima_busca = time.time()   # falhando ou não, a busca de mensagens segue (antes travava aqui)
+                try:
+                    caixa_postal.baixar_memoria()   # o PC dormiu: a nuvem pode ter conversado nesse meio-tempo
+                except Exception as erro:  # noqa: BLE001
+                    print(f"(memória da nuvem não sincronizada: {erro})")
             if telegram.ADIADAS:   # mensagens que chegaram durante uma espera de aprovação vêm primeiro
                 r, telegram.ADIADAS[:] = list(telegram.ADIADAS), []
             else:
@@ -534,6 +538,9 @@ def rodar() -> None:
         for u in r:
             deslocamento = u["update_id"] + 1
             msg = u.get("message") or {}
+            if not msg and u.get("callback_query"):
+                _clique_tardio(u["callback_query"], meu_chat)   # botão de um plano que já não espera resposta
+                continue
             if str(msg.get("chat", {}).get("id")) != meu_chat:
                 continue  # ignora outras pessoas
             if not _tem_conteudo(msg):
@@ -564,6 +571,7 @@ def rodar() -> None:
                 texto = midia.entrada(msg, avisar=telegram.enviar)
                 if not texto:
                     continue
+                telegram.PEDIDO_ATUAL = texto
                 if msg.get("photo") or msg.get("document"):
                     # foto/documento: quem decide o que fazer é a SUA legenda, não o conteúdo do arquivo
                     if msg.get("caption") and modo_da_mensagem(msg["caption"]) == "tarefa":
@@ -587,6 +595,39 @@ def rodar() -> None:
                 if papel == "pc_com_caixa":   # a nuvem continua a conversa se o PC desligar
                     import threading
                     threading.Thread(target=caixa_postal.enviar_memoria, daemon=True).start()
+
+
+def _clique_tardio(cb: dict, meu_chat: str) -> None:
+    """Toque em ✅/❌ de um plano que já expirou: nunca fica sem resposta. ✅ refaz o pedido e executa."""
+    if str((cb.get("message") or {}).get("chat", {}).get("id")) != meu_chat:
+        return
+    resposta, _, codigo = (cb.get("data") or "").partition(":")
+    pedido = telegram.retomar_expirado(codigo) if resposta == "sim" else ""
+    try:
+        telegram._api("answerCallbackQuery", {"callback_query_id": cb["id"],
+                                             "text": "Aprovado! Executando." if pedido else "Plano já encerrado."})
+    except Exception:  # noqa: BLE001
+        pass
+    if resposta != "sim":
+        return
+    if not pedido:
+        telegram.enviar("⏱ Esse plano já tinha sido encerrado e não consigo mais refazê-lo. "
+                        "Mande o pedido de novo que eu executo.")
+        return
+    telegram.enviar("✅ Aprovação recebida depois do prazo — refazendo o plano e executando agora.")
+    telegram.PEDIDO_ATUAL = pedido
+    telegram.APROVACAO_ANTECIPADA = True
+    try:
+        tratar(pedido)
+    except caixa_postal.PrecisaDoPC:
+        telegram.enviar("📬 Isso precisa do seu PC. Mande o pedido de novo quando ele estiver ligado.")
+    except PlanoCancelado:
+        pass
+    except Exception as erro:  # noqa: BLE001
+        traceback.print_exc()
+        _avisar_erro(erro)
+    finally:
+        telegram.APROVACAO_ANTECIPADA = False
 
 
 def _avisar_erro(erro: Exception) -> None:

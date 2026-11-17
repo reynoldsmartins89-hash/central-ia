@@ -127,6 +127,9 @@ def main(argv: list[str] | None = None) -> int:
     c_ler.add_argument("--tipos", nargs="*", choices=["documento", "imagem", "audio/video"], default=None)
     c_ler.add_argument("--minutos", type=float, default=None, help="duração máxima desta rodada")
     c_ler.add_argument("--limite", type=int, default=None, help="máximo de arquivos nesta rodada")
+    c_idi = sub.add_parser("idiomas", help="copia para o Drive (Meu Drive\\Idiomas) o que já foi lido de E:\\IDIOMAS")
+    c_idi.add_argument("acao", choices=["drive", "progresso", "lembrete", "instalar-lembrete"])
+    sub.add_parser("pausar", help="antes de desligar o PC: pausa o Vigia e tudo o que ele roda")
     c_drv = sub.add_parser("drive", help="Agente Drive: catálogo, duplicados e leitura pela API, sem baixar o Drive")
     c_drv.add_argument("acao", choices=["conectar", "catalogar", "duplicados", "separar", "ler"])
     c_drv.add_argument("pasta", nargs="?", default="", help="em 'separar': só esta pasta do Drive (ex.: EBOOKS)")
@@ -154,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     c_cu.add_argument("agente")
     c_cu.add_argument("--relatorio", action="store_true", help="só mostra o que já foi decidido")
     c_cu.add_argument("--reindexar", action="store_true", help="refaz a biblioteca com as decisões já tomadas")
+    c_cu.add_argument("--exportar", default="", help="depois, grava cada material aprovado como .md nesta pasta")
     c_md = sub.add_parser("markdown", help="converte TODOS os arquivos de uma pasta em .md (subpasta organizada)")
     c_md.add_argument("pasta")
     c_md.add_argument("--sem-midias", action="store_true", help="não transcreve vídeos/áudios")
@@ -175,6 +179,12 @@ def main(argv: list[str] | None = None) -> int:
     c_int = sub.add_parser("integridade", help="encontra arquivos corrompidos ou incompletos (só lê)")
     c_int.add_argument("acao", choices=["verificar", "relatorio"])
     c_int.add_argument("alvo", nargs="?", default="")
+    c_em = sub.add_parser("emails", help="Gerenciador de E-mails: lê, classifica e organiza todas as contas (nunca apaga)")
+    c_em.add_argument("acao", choices=["paginas", "testar", "pastas", "ler", "classificar", "painel",
+                                        "aplicar", "desfazer", "tudo"])
+    c_em.add_argument("conta", nargs="?", default="", help="só esta conta (ex.: YAHOO, EB, GMAIL0)")
+    c_em.add_argument("--limite", type=int, default=None, help="máximo de e-mails lidos por conta nesta rodada")
+    c_em.add_argument("--pasta", default="INBOX", help="pasta a ler (padrão: Caixa de Entrada)")
     c_cur = sub.add_parser("curador", help="cataloga, classifica e reorganiza arquivos (com seu consentimento)")
     c_cur.add_argument("acao", choices=["catalogar", "colecoes", "resumo", "buscar", "classificar",
                                          "propostas", "aplicar", "desfazer"])
@@ -237,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             curadoria.montar(a.agente)
             print(curadoria.relatorio(a.agente))
+        if a.exportar:
+            curadoria.exportar_md(a.agente, a.exportar)
         return 0
     if a.comando == "markdown":
         from superagente import conversor
@@ -324,6 +336,25 @@ def main(argv: list[str] | None = None) -> int:
         print(leitor.progresso())
         return 0
 
+    if a.comando == "pausar":
+        from superagente import vigia
+        print(vigia.pausar())
+        return 0
+
+    if a.comando == "idiomas":
+        from superagente import idiomas
+        if a.acao == "lembrete":
+            print(idiomas.lembrete())
+            return 0
+        if a.acao == "instalar-lembrete":
+            print(f"✅ Lembrete instalado na inicialização do Windows: {idiomas.instalar_lembrete()}")
+            return 0
+        if a.acao == "drive":
+            idiomas.espelhar()
+        for nome, lidos, total in idiomas.progresso():
+            print(f"• {nome}: {lidos:,} de {total:,} arquivos lidos")
+        return 0
+
     if a.comando == "drive":
         from superagente import drive
         if a.acao == "conectar":
@@ -408,6 +439,10 @@ def main(argv: list[str] | None = None) -> int:
             integridade.varrer(a.alvo)
         print(integridade.relatorio(a.alvo or None))
         return 0
+
+    if a.comando == "emails":
+        from superagente import emails
+        return emails.cli(a.acao, a.conta, a.limite, a.pasta, sim=a.sim)
 
     if a.comando == "curador":
         from superagente import curador

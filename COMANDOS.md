@@ -100,3 +100,27 @@ que guarda tudo por **72 horas**).
 | `python main.py integridade verificar "E:\"` | Procura arquivos corrompidos (só lê) |
 | `python main.py reparar executar "E:\"` | Agente Reparador: conserta numa CÓPIA, aponta falsos alarmes e procura cópias sãs |
 | `python main.py vigia` | Agente Vigia (liga sozinho com o Windows): mantém bot e leitura rodando e avisa falhas |
+
+## 📬 Gerenciador de E-mails (todas as contas, nunca apaga)
+Dois cliques em **EMAILS.bat**, ou:
+
+| Comando | O que faz |
+|---|---|
+| `python main.py emails paginas` | Abre de uma vez as páginas para trocar senhas e gerar as **senhas de app** (Yahoo, Gmails, Hotmail, EB) |
+| `python main.py emails testar` | Confere quais contas conectam |
+| `python main.py emails tudo` | Inventaria as pastas, lê a Caixa de Entrada (sem marcar como lido), classifica com IA e abre o **painel** |
+| `python main.py emails aplicar` | Mostra o plano e, após o seu ✅, **move** para `Central/…` (nada é apagado) |
+| `python main.py emails desfazer` | Devolve à Caixa de Entrada tudo o que a Central moveu |
+
+Na Caixa de Entrada ficam só: importantes, o que pede resposta/ação e o que a IA não teve certeza.
+Pastas antigas não são mexidas; o painel traz uma sugestão de consolidação. Senhas só no `.env`.
+
+## 🌍 Idiomas (E:\IDIOMAS → Markdown no Drive)
+O Agente Leitor lê os idiomas antes do resto do acervo; o Vigia copia as fichas para `Meu Drive\Idiomas` a cada 30 min.
+
+| Comando | O que faz |
+|---|---|
+| `python main.py idiomas progresso` | Quantos arquivos de cada idioma já foram lidos |
+| `python main.py idiomas drive` | Copia agora para o Drive o que já foi lido |
+| `python main.py pausar` | Antes de desligar o PC: pausa o Vigia e tudo o que ele roda |
+| `python main.py idiomas lembrete` | (roda ao ligar o PC) avisa no Telegram e só retoma com o seu SIM |

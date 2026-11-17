@@ -133,8 +133,47 @@ def atualizacoes(deslocamento: int = 0, espera: int = 30) -> list[dict]:
                                "allowed_updates": ["message", "callback_query"]}, timeout=espera + 10).get("result", [])
 
 
-def pedir_aprovacao(texto: str, espera_max: int = 3600) -> bool:
+PEDIDO_ATUAL = ""            # o pedido que o bot está atendendo agora (para refazê-lo se a aprovação vier tarde)
+APROVACAO_ANTECIPADA = False  # você já aprovou (tarde) um plano igual: o próximo pedido de aprovação passa direto
+ARQUIVO_EXPIRADOS = os.path.join(os.path.expanduser("~"), ".central-ia", "planos_expirados.json")
+
+
+def _expirados() -> dict:
+    try:
+        with open(ARQUIVO_EXPIRADOS, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def guardar_expirado(codigo: str, pedido: str) -> None:
+    """Plano cujo prazo acabou: se você tocar em ✅ depois, o bot refaz o pedido em vez de ignorar o clique."""
+    dados = {c: v for c, v in _expirados().items() if time.time() - v.get("quando", 0) < 7 * 86400}
+    dados[codigo] = {"pedido": pedido, "quando": time.time()}
+    os.makedirs(os.path.dirname(ARQUIVO_EXPIRADOS), exist_ok=True)
+    with open(ARQUIVO_EXPIRADOS, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=1)
+
+
+def retomar_expirado(codigo: str) -> str:
+    """Devolve (e retira da lista) o pedido de um plano expirado; '' se não houver."""
+    dados = _expirados()
+    item = dados.pop(codigo, None)
+    if item is not None:
+        with open(ARQUIVO_EXPIRADOS, "w", encoding="utf-8") as f:
+            json.dump(dados, f, ensure_ascii=False, indent=1)
+    return (item or {}).get("pedido", "")
+
+
+def pedir_aprovacao(texto: str, espera_max: int | None = None) -> bool:
     """Envia o texto com botões Aprovar/Rejeitar e espera a sua resposta no celular."""
+    global APROVACAO_ANTECIPADA
+    if APROVACAO_ANTECIPADA:
+        APROVACAO_ANTECIPADA = False
+        enviar(texto + "\n\n✅ Já aprovado por você — executando.")
+        return True
+    if espera_max is None:   # uma mensagem nova cancela o plano, então esperar mais não trava nada
+        espera_max = int(float(os.getenv("APROVACAO_HORAS", "12")) * 3600)
     codigo = str(int(time.time()))
     deslocamento = _ultimo_update() + 1
     enviar(texto + "\n\nAprovar a execução?",
@@ -157,7 +196,10 @@ def pedir_aprovacao(texto: str, espera_max: int = 3600) -> bool:
             _api("answerCallbackQuery", {"callback_query_id": cb["id"],
                                          "text": "Aprovado!" if resposta == "sim" else "Rejeitado."})
             return resposta == "sim"
-    enviar("⏱ Tempo de aprovação esgotado; plano cancelado.")
+    if PEDIDO_ATUAL:
+        guardar_expirado(codigo, PEDIDO_ATUAL)
+    enviar("⏱ Tempo de aprovação esgotado; nada foi feito. Se ainda quiser, toque em ✅ Aprovar no plano "
+           "acima a qualquer momento (vale por 7 dias) e eu executo.")
     return False
 
 

@@ -103,8 +103,53 @@ TEMAS.update({
                    "latim", "gregoriano", '"vetus ordo"', '"summorum pontificum"', "breviário", '"ofício divino"',
                    "patrística", "tomismo", "latina"],
         "drive_nomes": ["tridentin", "trento", "missa", "liturg", "latim", "latin", "catecismo", "gregorian"],
+    },    "lider": {
+        "especialista": ("um mentor de LIDERANÇA (militar, empresarial, pública e cristã): comando, chefia, gestão de "
+                         "pessoas e equipes, decisão e caráter do líder"),
+        "descricao": ("LIDERANÇA em todas as formas: liderança militar e comando, chefia e gestão de pessoas e equipes, "
+                      "liderança empresarial e executiva, liderança em crises e na complexidade, tomada de decisão do "
+                      "líder, influência, comunicação e oratória do líder, formação de líderes, mentoria e coaching de "
+                      "líderes, virtudes, caráter e exemplo (inclusive liderança cristã e servidora), cultura e motivação "
+                      "de equipes, delegação, feedback, liderança de si mesmo"),
+        "nao": ("material que só cita 'líder' ou 'liderança' de passagem; notícias políticas sobre líderes de "
+                "países; marketing e vendas sem foco em liderar pessoas; editais e documentos administrativos"),
+        "termos": ["liderança", "lideranca", '"líder"', '"líderes"', '"liderar"', '"gestão de pessoas"', "chefia",
+                   '"comando e controle"', '"leadership"', '"liderança situacional"', '"liderança servidora"',
+                   '"gestão de equipes"', '"formação de líderes"'],
+        "drive_nomes": ["lider", "leader", "chefia", "gestão de pessoas", "gestao de pessoas"],
     },
 })
+
+
+def exportar_md(agente: str, pasta: str, log=print) -> int:
+    """Grava cada material APROVADO como um .md na pasta pedida (ex.: uma pasta do Google Drive)."""
+    import hashlib
+    from .conhecimento import _caminho_indice
+    destino = Path(pasta).expanduser()
+    destino.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(_caminho_indice(agente), timeout=60)
+    textos: dict[str, list[str]] = {}
+    titulos: dict[str, str] = {}
+    for caminho, titulo, texto in con.execute("SELECT caminho, titulo, texto FROM trechos ORDER BY rowid"):
+        textos.setdefault(caminho, []).append(texto)
+        titulos.setdefault(caminho, titulo or Path(caminho).stem)
+    con.close()
+    vistos, gravados = set(), 0
+    for caminho, partes in textos.items():
+        corpo = "\n\n".join(partes)
+        marca = hashlib.sha1(corpo[:5000].encode("utf-8", "replace")).hexdigest()
+        if marca in vistos:   # o mesmo material em dois lugares (ex.: cópias duplicadas) vira um só arquivo
+            continue
+        vistos.add(marca)
+        nome = re.sub(r'[<>:"/\\|?*\x00-\x1f\s]+', " ", titulos[caminho]).strip()[:110] or marca[:10]
+        arquivo = destino / f"{nome}.md"
+        if arquivo.exists() and caminho not in arquivo.read_text(encoding="utf-8", errors="replace"):
+            arquivo = destino / f"{nome} ({marca[:6]}).md"
+        origem = caminho.removeprefix("drive:")
+        arquivo.write_text(f"# {titulos[caminho]}\n\n> Origem: `{origem}`\n\n{corpo}\n", encoding="utf-8")
+        gravados += 1
+    log(f"📁 {gravados:,} arquivos .md gravados em {destino}")
+    return gravados
 
 
 # ------------------------------------------------------------------ candidatos

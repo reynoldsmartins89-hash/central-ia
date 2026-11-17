@@ -149,7 +149,7 @@ def remoto_espiar() -> list[dict]:
 
 def _scp(origem: str, destino: str, timeout: float = 3600) -> None:
     r = subprocess.run(["scp", "-q", "-p", "-i", str(CHAVE_SSH), "-o", "BatchMode=yes", origem, destino],
-                       capture_output=True, text=True, timeout=timeout)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or "falha no scp").strip()[-300:])
 
@@ -175,8 +175,12 @@ def baixar_memoria() -> int:
                 continue
             # JUNTA as duas versões (nunca substitui): nada do que foi dito no PC ou na nuvem se perde
             from . import memoria
-            remoto = json.loads(novo.read_text(encoding="utf-8"))
-            atual = json.loads(local.read_text(encoding="utf-8"))
+            try:   # arquivo copiado pela metade ou com acento quebrado: pula agora, tenta na próxima
+                remoto = json.loads(novo.read_text(encoding="utf-8", errors="replace"))
+                atual = json.loads(local.read_text(encoding="utf-8", errors="replace"))
+            except ValueError as erro:
+                print(f"(memória {nome} ilegível, sincronização adiada: {erro})")
+                continue
             unido = (memoria.juntar_conversas(atual, remoto) if nome == "conversa.json"
                      else memoria.juntar_perfis(atual, remoto))
             if unido != atual:

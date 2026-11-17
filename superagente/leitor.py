@@ -352,8 +352,13 @@ def _ler_compactado(con, caminho: str, log=print) -> int:
             pass
 
 
+def _pastas_prioritarias() -> list[str]:
+    from .idiomas import pastas_em_ordem
+    return pastas_em_ordem()
+
+
 def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: int | None = None,
-              minutos: float | None = None, log=print) -> dict:
+              minutos: float | None = None, log=print, primeiro: list[str] | None = None) -> dict:
     """Lê os arquivos ainda não lidos (prioridade: documentos → imagens → PDFs escaneados → áudio/vídeo).
     `minutos` limita o tempo desta rodada; rode de novo para continuar de onde parou."""
     con = _tabelas()
@@ -366,7 +371,15 @@ def processar(raiz: str | None = None, tipos: list[str] | None = None, limite: i
     fila = [(c, t, tipo_de(c, r)) for c, t, r in linhas]
     fila = [(c, t, tp) for c, t, tp in fila if tp and (not tipos or tp in tipos)
             and not (tp == "imagem" and (t or 0) < TAMANHO_MINIMO_IMAGEM)]
-    fila.sort(key=lambda x: (PRIORIDADE.get(x[2], 9), x[1]))
+    primeiro = [p.rstrip("\\/").casefold() + "\\" for p in (primeiro if primeiro is not None
+                                                             else _pastas_prioritarias())]
+
+    def _ordem_da_pasta(caminho: str) -> int:
+        c = caminho.casefold()
+        return next((i for i, p in enumerate(primeiro) if c.startswith(p)), len(primeiro))
+
+    # pastas prioritárias (idiomas) antes de tudo: documentos delas, depois mídia pasta a pasta
+    fila.sort(key=lambda x: ((o := _ordem_da_pasta(x[0])) == len(primeiro), PRIORIDADE.get(x[2], 9), o, x[1]))
     if limite:
         fila = fila[:limite]
     log(f"📚 {len(fila):,} arquivos na fila de leitura")
