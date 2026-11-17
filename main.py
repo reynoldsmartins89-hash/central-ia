@@ -146,6 +146,10 @@ def main(argv: list[str] | None = None) -> int:
     c_rep.add_argument("acao", choices=["executar", "relatorio", "separar-perdidos"])
     c_rep.add_argument("alvo", nargs="?", default="")
     c_rep.add_argument("--limite", type=int, default=None)
+    c_vg = sub.add_parser("vagas", help="Caçador de Vagas: busca vagas remotas/híbridas e avisa as que têm a ver com você")
+    c_vg.add_argument("acao", choices=["buscar", "perfil", "ultimas", "fontes"])
+    c_vg.add_argument("--sem-ia", action="store_true", help="só coleta e filtra, sem avaliar com IA")
+    c_vg.add_argument("--sem-aviso", action="store_true", help="avalia, mas não manda nada no Telegram")
     sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
     c_gr = sub.add_parser("grupos", help="relatórios de grupos do WhatsApp e do Telegram")
     c_gr.add_argument("acao", choices=["importar", "telegram", "relatorio", "pedido", "listar", "entrar-telegram",
@@ -296,6 +300,20 @@ def main(argv: list[str] | None = None) -> int:
             caixa_postal.sincronizar_dados()
         else:
             print(f"papel: {caixa_postal.papel()}")
+        return 0
+    if a.comando == "vagas":
+        from superagente import vagas
+        if a.acao == "perfil":
+            vagas.carregar_perfil()
+            print(f"Seu perfil: {vagas.PERFIL}")
+            if os.name == "nt":
+                os.startfile(vagas.PERFIL)  # noqa: S606 — abre no Bloco de Notas
+        elif a.acao == "buscar":
+            vagas.buscar(usar_ia=not a.sem_ia, avisar=not a.sem_aviso)
+        elif a.acao == "ultimas":
+            print(vagas.ultimas())
+        else:
+            print(vagas.fontes())
         return 0
     if a.comando == "vigia":
         from superagente import vigia

@@ -59,6 +59,7 @@ Se quiser um especialista específico, mencione-o: “…use também o agente de
 |---|---|
 | `/status` | Quais IAs estão funcionando agora |
 | `/vigia` | O que o Agente Vigia está mantendo ligado (bot, leitura, reparos) |
+| `/vagas` | As melhores vagas remotas/híbridas que o Caçador de Vagas achou para o seu perfil |
 | `/comandos` | Esta lista |
 
 ## Ligado o tempo todo
@@ -79,7 +80,7 @@ que guarda tudo por **72 horas**).
 - A conversa continua de um para o outro: a memória vai junto.
 - Trabalhos feitos na nuvem são trazidos para `resultados/` quando o PC liga.
 - O Vigia leva ao servidor, a cada 6 h, o que foi lido de novo (bibliotecas e acervo).
-- Servidor: `ubuntu@159.112.177.123` (chave `~/.ssh/central_ia_oracle`); serviços `central-caixa` e `central-bot`.
+- Servidor: o endereço está em `CAIXA_POSTAL` no `.env` (chave `~/.ssh/central_ia_oracle`); serviços `central-caixa` e `central-bot`.
 
 ## No terminal (manutenção — feita pelo Claude Code/Copilot)
 

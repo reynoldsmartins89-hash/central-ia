@@ -75,6 +75,11 @@ habilidade = "dados/analise-de-dados"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "deepseek:deepseek-chat", "ollama:qwen3:4b"]
 acervo = true
 
+[agentes.cacador_vagas]
+descricao = "Caçador de Vagas: busca vagas remotas/híbridas na Gupy, LinkedIn (alertas), Remotive e outros, dá nota de aderência ao seu perfil e avisa no Telegram as melhores."
+habilidade = "pesquisa/cacador-de-vagas"
+modelos = ["gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "gemini:gemini-flash-lite-latest", "ollama:qwen3:4b"]
+
 [agentes.gestor]
 descricao = "Transforma objetivos em plano de ação com etapas, prazos, riscos e KPIs."
 habilidade = "gestao/gestao-de-projetos"

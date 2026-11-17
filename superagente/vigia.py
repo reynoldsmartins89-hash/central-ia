@@ -149,7 +149,12 @@ def tarefas_padrao() -> list[Tarefa]:
                Tarefa("leitura", "a leitura do acervo (Agente Leitor/Reparador)", leitura,
                       repetir_a_cada=ESPERA_NOVA_LEITURA),
                Tarefa("idiomas", "a cópia dos idiomas lidos para o Drive", [["idiomas", "drive"]],
-                      repetir_a_cada=1800)]
+                      repetir_a_cada=1800),
+               Tarefa("acervo", "o acervo dos agentes (tudo de cada tema em Markdown)", [["acervo", "rodar"]],
+                      repetir_a_cada=3 * 3600)]
+    from . import vagas
+    if vagas.PERFIL.exists() and vagas.perfil_preenchido(vagas.carregar_perfil()):   # só com o perfil preenchido
+        tarefas.append(Tarefa("vagas", "o Caçador de Vagas", [["vagas", "buscar"]], repetir_a_cada=4 * 3600))
     if (Path.home() / ".central-ia" / "openwebui" / ".venv" / "Scripts" / "open-webui.exe").exists():
         tarefas += [Tarefa("roteador", "a Central como modelo único", [["roteador"]], repetir_a_cada=30),
                     Tarefa("openwebui", "a tela de conversa (Open WebUI)", [["openwebui"]], repetir_a_cada=30)]

@@ -1,5 +1,8 @@
 # Central de IA (CIIA)
 
+> 💼 **Portfolio / case study (EN · PT):** [PORTFOLIO.md](PORTFOLIO.md) — what this system does, how it was
+> designed and the skills it demonstrates. Author: [Reynolds R. Martins](https://www.linkedin.com/in/reynolds-r-martins).
+
 Um **superagente** em Python que coordena uma equipe de **agentes especialistas**,
 cada um definido por uma **habilidade** (`SKILL.md`) e por uma lista de modelos de IA
 em ordem de preferência — Ollama local, Gemini, Groq, Claude, ChatGPT, DeepSeek,

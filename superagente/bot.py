@@ -65,6 +65,7 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 ⚙️ SISTEMA
 • /status — quais IAs estão funcionando agora
 • /vigia — o que o Agente Vigia está mantendo ligado
+• /vagas — as melhores vagas que o Caçador de Vagas achou para você
 • /comandos — esta lista
 
 🔒 Regra: nada é publicado, movido ou apagado sem o seu ✅ aqui no Telegram."""
@@ -132,6 +133,10 @@ def tratar(texto: str) -> None:
     if comando == "/reparos":
         from . import reparador
         telegram.enviar(reparador.relatorio(exemplos=2)[:3900])
+        return
+    if comando == "/vagas":
+        from . import vagas
+        telegram.enviar(vagas.ultimas())
         return
     if comando == "/vigia":
         from . import vigia
@@ -227,7 +232,7 @@ def tratar(texto: str) -> None:
 
 # comandos que dependem do PC (Executor e catálogo dos HDs): na nuvem, ficam guardados para o PC
 SO_NO_PC = {"/pc", "/executar", "/continuar", "/buscar", "/curador", "/duplicados", "/integridade",
-            "/reparos", "/leitura", "/vigia"}
+            "/reparos", "/leitura", "/vigia", "/vagas"}
 
 
 # ------------------------------------------------------------------ modos: conversa, tarefa, ação

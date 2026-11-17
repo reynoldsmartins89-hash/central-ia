@@ -1,0 +1,53 @@
+# Perfil do Caçador de Vagas — MODELO
+#
+# A cópia de verdade fica FORA do repositório (tem dados pessoais):
+#     %USERPROFILE%\.central-ia\vagas\perfil.toml
+# Abra com:  python main.py vagas perfil
+#
+# Quanto mais honesto e específico o resumo, melhores as notas.
+
+# Texto livre que a IA lê para comparar com cada vaga.
+resumo = """
+Cargo/experiência atual: ...
+Formação: ...
+Experiências e conquistas (com números, se houver): ...
+Ferramentas e técnicas que domino: ...
+Idiomas: português nativo; inglês ...; espanhol ...
+Senioridade que busco: pleno / sênior / coordenação
+Regime aceito: CLT, PJ, freelancer
+Pretensão mínima: R$ ... por mês
+Não quero: vendas por comissão, telemarketing, estágio, ...
+"""
+
+# Palavras usadas para BUSCAR nos sites brasileiros (Gupy, Adzuna).
+termos_pt = ["gestão de projetos", "analista de projetos"]
+
+# Palavras usadas para BUSCAR nos sites internacionais (Remotive, Himalayas...).
+termos_en = ["project manager", "project coordinator"]
+
+# Vaga cujo TÍTULO tenha uma destas palavras é descartada antes da IA.
+excluir_titulo = ["estágio", "estagio", "intern", "trainee", "jovem aprendiz", "vendedor", "telemarketing"]
+
+# Modalidades aceitas: "remoto" e/ou "hibrido".
+modalidades = ["remoto", "hibrido"]
+
+# Se preenchido, vagas HÍBRIDAS em outras cidades são descartadas. Ex.: ["Brasília", "Goiânia"]
+cidades_hibrido = []
+
+# Vagas internacionais restritas a outros países (ex.: "USA only") são descartadas.
+aceita_vagas_do_exterior = true
+descartar_restritas_a_outros_paises = true
+
+# Só avisa no Telegram a partir desta nota (0–100).
+nota_minima = 75
+
+# Ignora vagas publicadas há mais de N dias.
+dias_maximos = 21
+
+# Limite de vagas avaliadas pela IA por rodada (economiza a cota gratuita).
+max_avaliacoes_por_rodada = 80
+
+# Lê os alertas de vagas que chegam por e-mail (LinkedIn, Indeed, Glassdoor, Catho, InfoJobs, Vagas.com).
+ler_alertas_por_email = true
+# Contas de e-mail (ids do .env: GMAIL0, YAHOO, HOTMAIL...). Vazio = todas, menos a do EB.
+contas_email = []
