@@ -22,16 +22,32 @@ PEDIDO_FOTO = ("Descreva esta imagem em português para um assistente que vai aj
                "transcreva TODO o texto visível e explique o que ela mostra, com os detalhes úteis.")
 
 
-def baixar(file_id: str, nome: str) -> Path:
-    """Baixa um arquivo enviado ao bot (limite do Telegram: 20 MB)."""
+ESPERAS_DOWNLOAD = (3, 10, 30)   # o Telegram às vezes demora a entregar o arquivo: tenta de novo antes de desistir
+
+
+def baixar(file_id: str, nome: str, esperas=ESPERAS_DOWNLOAD) -> Path:
+    """Baixa um arquivo enviado ao bot (limite do Telegram: 20 MB). Lentidão passageira não perde o pedido."""
+    import time
+    import urllib.error
     from .telegram import _api
-    caminho_remoto = _api("getFile", {"file_id": file_id})["result"]["file_path"]
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     PASTA_RECEBIDOS.mkdir(parents=True, exist_ok=True)
     destino = PASTA_RECEBIDOS / f"{datetime.now():%Y%m%d-%H%M%S}_{re.sub(r'[^\w.-]+', '_', nome)}"
-    with urllib.request.urlopen(f"https://api.telegram.org/file/bot{token}/{caminho_remoto}", timeout=120) as r:
-        destino.write_bytes(r.read())
-    return destino
+    for tentativa in range(len(esperas) + 1):
+        try:
+            caminho_remoto = _api("getFile", {"file_id": file_id})["result"]["file_path"]
+            with urllib.request.urlopen(f"https://api.telegram.org/file/bot{token}/{caminho_remoto}",
+                                        timeout=120) as r:
+                destino.write_bytes(r.read())
+            return destino
+        except (TimeoutError, urllib.error.URLError, ConnectionError) as erro:
+            if isinstance(erro, urllib.error.HTTPError) and erro.code < 500 and erro.code != 429:
+                raise   # arquivo inválido ou grande demais: repetir não adianta
+            if tentativa == len(esperas):
+                raise
+            print(f"   ... Telegram lento para entregar o arquivo ({erro}); tentando de novo em {esperas[tentativa]} s")
+            time.sleep(esperas[tentativa])
+    raise RuntimeError("inalcançável")
 
 
 def _transcrever_groq(caminho: Path) -> str:

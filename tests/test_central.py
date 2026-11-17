@@ -750,3 +750,38 @@ class TestExportarCuradoria(unittest.TestCase):
             self.assertIn("Origem: `D:/a.pdf`", texto)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestDownloadDoTelegram(unittest.TestCase):
+    def test_lentidao_do_telegram_tenta_de_novo_sem_perder_o_audio(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from superagente import midia, telegram
+
+        class Resposta:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b"OggS-audio"
+
+        chamadas = []
+
+        def get_file(metodo, dados=None, timeout=40):
+            chamadas.append(metodo)
+            if len(chamadas) < 3:
+                raise TimeoutError("The read operation timed out")
+            return {"result": {"file_path": "voice/file_1.oga"}}
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(midia, "PASTA_RECEBIDOS", Path(tmp)), \
+             mock.patch.object(telegram, "_api", side_effect=get_file), \
+             mock.patch("urllib.request.urlopen", return_value=Resposta()), \
+             mock.patch("time.sleep"):
+            arquivo = midia.baixar("abc", "audio.ogg")
+            self.assertEqual(arquivo.read_bytes(), b"OggS-audio")
+            self.assertEqual(len(chamadas), 3)
+
+            chamadas.clear()
+            with mock.patch.object(telegram, "_api", side_effect=TimeoutError("lento")):
+                with self.assertRaises(TimeoutError):   # se continuar fora do ar, desiste e o bot avisa
+                    midia.baixar("abc", "audio.ogg", esperas=(0, 0))
