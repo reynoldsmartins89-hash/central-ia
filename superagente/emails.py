@@ -55,26 +55,35 @@ CONTAS = [
 # chave → (nome da pasta, descrição para a IA, fica na Caixa de Entrada?)
 CATEGORIAS: dict[str, tuple[str, str, bool]] = {
     "importante": ("00 Importante", "escrito por uma pessoa real para você, ou assunto sério/pessoal "
-                   "(família, saúde, jurídico, contratos, convites pessoais)", True),
-    "trabalho": ("01 Trabalho EB", "Exército Brasileiro, quartel, serviço, documentos militares, "
+                   "(família, saúde, jurídico, contratos, imóveis, convites pessoais)", True),
+    "familia": ("01 Família e Escola", "família, filhos, escola e colégio dos filhos, matrículas, "
+                "comunicados escolares, saúde da família", False),
+    "trabalho": ("02 Trabalho EB", "Exército Brasileiro, quartel, OM, serviço, documentos militares, "
                  "colegas de trabalho", False),
-    "faculdade": ("02 Faculdade", "faculdades e cursos formais: FUNIB, USP, Faculdade Mar Atlântico "
-                  "e outras instituições de ensino, matrícula, provas, notas, TCC", False),
-    "financeiro": ("03 Financeiro e Contas", "bancos, cartões, faturas, boletos, Pix, investimentos, "
-                   "impostos, contas de consumo (luz, água, telefone, internet)", False),
-    "governo": ("04 Governo e Documentos", "gov.br, Receita, INSS, justiça, cartórios, detran, "
+    "faculdade": ("03 Faculdade e Pós", "faculdades, pós-graduações, mestrado e cursos formais: FUNIB/FUNIBER, "
+                  "USP, Faculdade Mar Atlântico, Estácio, UNP e outras; matrícula, provas, notas, TCC", False),
+    "financeiro": ("04 Financeiro e Investimentos", "bancos, cartões, faturas, boletos, Pix, consórcio, "
+                   "investimentos (XP, Suno, Tesouro), impostos, contas de consumo", False),
+    "governo": ("05 Governo e Documentos", "gov.br, Receita, INSS, justiça, cartórios, detran, passaporte, "
                 "documentos oficiais", False),
-    "compras": ("05 Compras e Entregas", "pedidos feitos, confirmações de compra, notas fiscais, "
-                "rastreio e entregas (NÃO ofertas)", False),
-    "seguranca": ("06 Segurança de Contas", "códigos de verificação, alertas de login, troca de senha, "
+    "compras": ("06 Compras e Entregas", "pedidos feitos, confirmações de compra, notas fiscais, rastreio, "
+                "entregas, marketplaces (Mercado Livre, Enjoei, eBay, OLX) — NÃO ofertas", False),
+    "seguranca": ("07 Segurança de Contas", "códigos de verificação, alertas de login, troca de senha, "
                   "avisos de segurança de contas", False),
-    "cursos": ("07 Cursos e Estudos", "cursos online, plataformas de estudo, eventos, webinários, "
-               "conteúdo educativo que você assinou", False),
-    "notificacoes": ("08 Notificações", "avisos automáticos de redes sociais, aplicativos e serviços "
+    "maconaria": ("08 Maçonaria", "Maçonaria, lojas maçônicas, Harmonia e Concórdia, Rosa Cruz, "
+                  "tesouraria e sessões de loja", False),
+    "seguranca_publica": ("09 Segurança Pública e Concursos", "segurança pública, polícias (PRF, PCDF, PCERJ, "
+                          "PMERJ), concursos públicos, FAEPOL, estudos de segurança", False),
+    "religiao": ("10 Religião e Fé", "Igreja Católica, teologia, paróquias, ADHONEP, Apascentar, "
+                 "comunidades e conteúdo religioso", False),
+    "tiro": ("11 Tiro e Armas", "clube de tiro, CR, armas, munição, IBAP, CAC", False),
+    "cursos": ("12 Cursos e Estudos", "cursos online, coaching, plataformas de estudo (Hotmart etc.), idiomas, "
+               "eventos, webinários, conteúdo educativo assinado", False),
+    "notificacoes": ("13 Notificações", "avisos automáticos de redes sociais, aplicativos e serviços "
                      "(LinkedIn, Facebook, YouTube, Google, etc.)", False),
-    "newsletters": ("09 Newsletters", "boletins e conteúdo editorial assinado (notícias, blogs, "
-                    "Substack), sem ser oferta de venda", False),
-    "promocoes": ("10 Promoções", "propaganda, ofertas, descontos, cupons, lojas, marketing", False),
+    "newsletters": ("14 Newsletters", "boletins e conteúdo editorial assinado (notícias, blogs, resenhas "
+                    "diárias, Substack), sem ser oferta de venda", False),
+    "promocoes": ("15 Promoções", "propaganda, ofertas, descontos, cupons, lojas, marketing", False),
     "revisar": ("", "não deu para ter certeza — você decide", True),
 }
 
@@ -431,7 +440,11 @@ várias faculdades — FUNIB, USP, Faculdade Mar Atlântico e outras — e produ
 Classifique CADA e-mail com rigor, lendo remetente, assunto e trecho. Categorias permitidas:
 {categorias}
 Regras:
-- "importante" é para mensagens escritas por pessoas reais para ele, ou assuntos sérios/pessoais.
+- "importante" é SÓ para mensagens escritas por uma pessoa real para ele, ou assuntos sérios/pessoais.
+  Marketing que usa o nome dele ("Reynolds, você…"), leilões, sorteios, horóscopo/mapas e convites de
+  lojas NÃO são importantes: são promocoes/newsletters/cursos.
+- Escola/colégio dos filhos e assuntos de família vão em "familia".
+- acao=true NÃO vale para "última chamada", "vagas acabando", "inscrições encerram" de marketing.
 - E-mail de faculdade/EB/banco/governo continua nessas categorias mesmo que peça ação (use acao=true).
 - acao=true quando ele precisa responder, pagar, assinar, enviar algo, cumprir prazo ou comparecer.
 - Na dúvida real, use "revisar" com confiança baixa. Nunca invente.
@@ -501,13 +514,23 @@ def classificar(conta: dict, usar_ia: bool = True, log=print) -> int:
     return len(pendentes)
 
 
+MASSA = {"cursos", "notificacoes", "newsletters", "promocoes"}  # envios em massa: um remetente, uma pasta
+# Estas valem e-mail a e-mail (o mesmo remetente manda alerta de segurança E propaganda, p. ex. o Google).
+# Nas demais, o remetente inteiro vai para a pasta da maioria dos e-mails dele.
+POR_EMAIL = {"seguranca", "governo", "compras"}
+GRATUITOS = {"gmail.com", "yahoo.com", "yahoo.com.br", "hotmail.com", "outlook.com", "live.com", "icloud.com",
+             "bol.com.br", "uol.com.br", "terra.com.br", "ig.com.br"}
+_NOMES_GENERICOS = ("não responda", "nao responda", "no-reply", "noreply", "do not reply", " via ", "alertas de")
+
+
 def destino(e: dict) -> str:
     """Pasta para onde o e-mail vai, ou "" se fica na Caixa de Entrada."""
     if e.get("movido_para") or e.get("pasta") != "INBOX":
         return ""
     cat = e.get("categoria") or "revisar"
     nome, _, fica = CATEGORIAS.get(cat, CATEGORIAS["revisar"])
-    if fica or e.get("acao") or (e.get("confianca") or 0) < CONFIANCA_MINIMA:
+    acao = e.get("acao") and not (cat in MASSA and "descadastrar" in (e.get("sinais") or ""))
+    if fica or acao or (e.get("confianca") or 0) < CONFIANCA_MINIMA:
         return ""
     return nome
 
@@ -541,29 +564,87 @@ def sugerir_consolidacao(conta: dict, log=print) -> str:
 
 # ----------------------------------------------------------------------------- mover / desfazer
 
+MINIMO_SUBPASTA = 8  # remetente com tantos e-mails (ou mais) numa categoria ganha subpasta própria
+_SUFIXOS_DUPLOS = ("com.br", "gov.br", "edu.br", "org.br", "net.br", "mil.br", "co.uk", "com.au")
+
+
+def chave_remetente(e: dict) -> str:
+    """Agrupa pelo domínio principal: news.amazon.com.br e amazon.com.br → amazon.com.br."""
+    dominio = (e.get("de_email") or "").rpartition("@")[2].lower().strip(">")
+    if dominio in GRATUITOS:
+        return (e.get("de_email") or "").lower()
+    partes = dominio.split(".")
+    n = 3 if any(dominio.endswith(s) for s in _SUFIXOS_DUPLOS) else 2
+    return ".".join(partes[-n:]) if dominio else ""
+
+
+def _nome_de_pasta(texto: str) -> str:
+    limpo = re.sub(r'[/\\"*%&<>|:?\[\]]+', " ", texto)
+    return re.sub(r"\s+", " ", limpo).strip(" .-")[:40]
+
+
+def _rotulo_grupo(lista: list[dict], chave: str) -> str:
+    nomes: dict[str, int] = {}
+    for e in lista:
+        if e.get("de_nome"):
+            nomes[e["de_nome"]] = nomes.get(e["de_nome"], 0) + 1
+    if nomes:
+        melhor = max(nomes, key=nomes.get)
+        if nomes[melhor] >= 0.6 * len(lista) and not any(g in melhor.lower() for g in _NOMES_GENERICOS):
+            return _nome_de_pasta(melhor)
+    marca = chave.split("@")[0] if "@" in chave else chave.split(".")[0]
+    return _nome_de_pasta(marca.capitalize())
+
+
+def com_subpastas(linhas: list[dict]) -> list[dict]:
+    """Preenche e["destino"]. Envios em massa do mesmo remetente vão todos para a MESMA pasta (a categoria
+    da maioria) e, se forem muitos, ganham subpasta própria (ex.: 15 Promoções/Americanas)."""
+    for e in linhas:
+        e["destino"] = destino(e)
+    votos: dict[tuple, dict[str, int]] = {}
+    for e in linhas:
+        if e["destino"] and e["categoria"] not in POR_EMAIL:
+            v = votos.setdefault((e["conta"], chave_remetente(e)), {})
+            v[e["categoria"]] = v.get(e["categoria"], 0) + 1
+    for e in linhas:
+        if e["destino"] and e["categoria"] not in POR_EMAIL:
+            v = votos[(e["conta"], chave_remetente(e))]
+            e["destino"] = CATEGORIAS[max(v, key=v.get)][0]
+    grupos: dict[tuple, list[dict]] = {}
+    for e in linhas:
+        if e["destino"]:
+            grupos.setdefault((e["conta"], e["destino"], chave_remetente(e)), []).append(e)
+    for (_, pasta, chave), lista in grupos.items():
+        if chave and len(lista) >= MINIMO_SUBPASTA:
+            rotulo = _rotulo_grupo(lista, chave)
+            for e in lista:
+                e["destino"] = f"{pasta}/{rotulo}"
+    return linhas
+
+
 def plano(conta_id: str = "") -> list[dict]:
     con = _banco()
     sql = "SELECT * FROM emails WHERE categoria IS NOT NULL AND movido_para IS NULL AND pasta='INBOX'"
     linhas = [dict(r) for r in con.execute(sql + (" AND conta=?" if conta_id else ""),
                                            ((conta_id,) if conta_id else ()))]
-    for e in linhas:
-        e["destino"] = destino(e)
-    return [e for e in linhas if e["destino"]]
+    return [e for e in com_subpastas(linhas) if e["destino"]]
 
 
 def _garantir_pasta(imap, delim: str, existentes: set[str], nome: str) -> str:
-    caminho = f"{PASTA_RAIZ}{delim}{nome}"
-    imap_nome = utf7_codificar(caminho)
-    if imap_nome not in existentes:
-        if utf7_codificar(PASTA_RAIZ) not in existentes:
-            imap.create(_citar(utf7_codificar(PASTA_RAIZ)))
-            existentes.add(utf7_codificar(PASTA_RAIZ))
+    """Cria Central, Central/Categoria e Central/Categoria/Remetente, nível por nível, se faltarem."""
+    caminho = PASTA_RAIZ
+    niveis = [PASTA_RAIZ, *[n for n in nome.split("/") if n]]
+    for i, _ in enumerate(niveis):
+        caminho = delim.join(niveis[:i + 1])
+        imap_nome = utf7_codificar(caminho)
+        if imap_nome in existentes:
+            continue
         tipo, dados = imap.create(_citar(imap_nome))
         if tipo != "OK":
             raise RuntimeError(f"não consegui criar a pasta {caminho}: {dados}")
         imap.subscribe(_citar(imap_nome))
         existentes.add(imap_nome)
-    return imap_nome
+    return utf7_codificar(caminho)
 
 
 def aplicar(conta: dict, log=print) -> int:
@@ -600,7 +681,7 @@ def aplicar(conta: dict, log=print) -> int:
                 agora = datetime.now().isoformat(timespec="seconds")
                 con.executemany("UPDATE emails SET movido_para=?, movido_em=? WHERE conta=? AND pasta='INBOX' "
                                 "AND uidvalidity=? AND uid=?",
-                                [(f"{PASTA_RAIZ}{delim}{nome}", agora, conta["id"], e["uidvalidity"], e["uid"])
+                                [(delim.join([PASTA_RAIZ, *nome.split("/")]), agora, conta["id"], e["uidvalidity"], e["uid"])
                                  for e in lote])
                 con.commit()
                 movidos += len(lote)
@@ -652,9 +733,8 @@ def _h(t) -> str:
 def painel(abrir: bool = True) -> Path:
     con = _banco()
     rotulos = {cid: rotulo for cid, _, rotulo in CONTAS}
-    emails = [dict(r) for r in con.execute("SELECT * FROM emails WHERE categoria IS NOT NULL ORDER BY data DESC")]
-    for e in emails:
-        e["destino"] = destino(e)
+    emails = com_subpastas([dict(r) for r in con.execute(
+        "SELECT * FROM emails WHERE categoria IS NOT NULL ORDER BY data DESC")])
     contas = sorted({e["conta"] for e in emails} | {r[0] for r in con.execute("SELECT conta FROM pastas")})
 
     def tabela(lista: list[dict], titulo: str, vazio: str) -> str:
@@ -687,6 +767,17 @@ def painel(abrir: bool = True) -> Path:
     importantes = [e for e in emails if e["categoria"] == "importante" and not e["acao"]]
     revisar = [e for e in emails if e["pasta"] == "INBOX" and not e["destino"] and not e["movido_para"]
                and e["categoria"] not in ("importante",) and not e["acao"]]
+
+    estrutura: dict[tuple[str, str], int] = {}
+    for e in emails:
+        if e["destino"]:
+            estrutura[(e["conta"], e["destino"])] = estrutura.get((e["conta"], e["destino"]), 0) + 1
+    estrutura_html = "".join(
+        f"<tr><td>{_h(rotulos.get(c, c))}</td><td>{_h(PASTA_RAIZ + '/' + d)}</td><td>{n}</td></tr>"
+        for (c, d), n in sorted(estrutura.items()))
+    estrutura_html = (f"<h2>📁 Pastas que serão criadas/usadas <span class=n>{sum(estrutura.values())}</span></h2>"
+                      f"<table><tr><th>Conta</th><th>Pasta</th><th>E-mails</th></tr>{estrutura_html}</table>"
+                      if estrutura else "")
 
     pastas_html = []
     for c in contas:
@@ -724,6 +815,7 @@ Barra laranja = ainda não lido. Para mover o que está indicado: <code>python m
 <div class=overflow>{tabela(acao, "✋ Pedem resposta ou ação (ficam na Caixa de Entrada)", "Nada pendente.")}</div>
 <div class=overflow>{tabela(importantes, "⭐ Importantes", "Nenhum.")}</div>
 <div class=overflow>{tabela(revisar, "🤔 Para você decidir (a IA não teve certeza)", "Nenhum.")}</div>
+<div class=overflow>{estrutura_html}</div>
 <h2>🗂 Pastas que já existem</h2>{''.join(pastas_html) or '<p class=vazio>Rode: python main.py emails pastas</p>'}
 </main></body></html>"""
     PASTA_SAIDA.mkdir(parents=True, exist_ok=True)

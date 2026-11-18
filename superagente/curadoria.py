@@ -20,12 +20,15 @@ from pathlib import Path
 PASTA = Path.home() / ".central-ia"
 PASTA_DECISOES = PASTA / "curadoria"
 LOTE = 6                     # candidatos por pergunta à IA
-TRECHO = 900                 # caracteres de cada candidato mostrados à IA (início + meio)
+TRECHO = 2400                # caracteres de cada candidato mostrados à IA: início + 3 pontos do miolo
+# (o início de um livro costuma ser capa, ficha e sumário: o juiz precisa ver o CORPO do texto)
 JUIZES = ["cli:claude/haiku", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b"]   # Haiku: rigoroso e rápido
 NOTA_MINIMA = 7
 EXTENSOES_DRIVE = {".md", ".txt", ".pdf", ".docx", ".pptx", ".epub", ".odt", ".doc", ".rtf", ".html"}
 DOCUMENTOS = {".pdf", ".docx", ".doc", ".pptx", ".epub", ".odt", ".rtf", ".txt", ".md", ".html"}
-MIDIA = {".mp4", ".mkv", ".avi", ".mov", ".mp3", ".m4a", ".wav", ".ogg", ".webm", ".wmv"}
+# tudo o que o Leitor transcreve: vídeos, áudios e AUDIOBOOKS (.opus/.aac/.wma/.flac/.m4b também)
+MIDIA = {".mp3", ".opus", ".m4a", ".m4b", ".wav", ".ogg", ".flac", ".aac", ".wma",
+         ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".3gp", ".mpg", ".mpeg"}
 
 TEMAS = {
     "mentor_educacao": {
@@ -53,6 +56,10 @@ TEMAS = {
         "drive_nomes": ["educa", "aprendiz", "aprender", "neuroci", "pedagog", "trivium", "quadrivium",
                         "escolást", "patríst", "memória", "memoriz", "didát", "alfabetiz", "montessori",
                         "cognit", "auto-educ", "autoeduc", "vida intelectual", "técnicas de estudo", "como estudar"],
+        # base doutrinária do mentor (Reynolds, 17/11/2026): a pós de Patrística e Medieval entra INTEIRA,
+        # sem o filtro "fala de educação?" (o juiz tinha recusado as aulas por não falarem de ensino)
+        "pastas_fixas": ["E:/FILOSOFIA CATÓLICA/Pós Graduação em Filosofia Patrística e Medieval/"
+                         "_Markdown (texto de todos os arquivos)"],
     },
 }
 
@@ -157,8 +164,9 @@ def _amostra(texto: str) -> str:
     texto = re.sub(r"\s+", " ", texto or "").strip()
     if len(texto) <= TRECHO:
         return texto
-    meio = len(texto) // 2
-    return texto[: TRECHO * 2 // 3] + " […] " + texto[meio: meio + TRECHO // 3]
+    inicio, parte = TRECHO * 3 // 8, TRECHO * 5 // 24
+    pedacos = [texto[:inicio]] + [texto[int(len(texto) * f): int(len(texto) * f) + parte] for f in (0.3, 0.55, 0.8)]
+    return " […] ".join(pedacos)
 
 
 def _candidatos_acervo(termos: list[str]) -> dict[str, dict]:
@@ -171,6 +179,11 @@ def _candidatos_acervo(termos: list[str]) -> dict[str, dict]:
         item = saida.setdefault(caminho, {"titulo": titulo or Path(caminho).stem, "fonte": "hd", "texto": ""})
         item["texto"] += (texto or "") + "\n\n"
     return saida
+
+
+def _eh_markdown_de_agente(caminho: str) -> bool:
+    """Arquivo das pastas Agente_X_Markdown (geradas pela Central): não é material novo."""
+    return any(parte.endswith("_Markdown") for parte in Path(caminho).parts)
 
 
 def _candidatos_bibliotecas(termos: list[str], ignorar: set[str]) -> dict[str, dict]:
@@ -195,30 +208,119 @@ def _candidatos_bibliotecas(termos: list[str], ignorar: set[str]) -> dict[str, d
                 textos.setdefault(caminho, []).append(texto)
                 titulos.setdefault(caminho, titulo)
         for caminho, partes in textos.items():
+            if _eh_markdown_de_agente(caminho):
+                continue
             saida[caminho] = {"titulo": titulos[caminho] or Path(caminho).stem, "fonte": f"drive:{nome}",
                               "texto": "\n\n".join(partes)}
         con.close()
     return saida
 
 
-def _candidatos_drive(palavras: list[str]) -> tuple[dict[str, dict], list[str]]:
-    """Resto do Drive (fora das pastas Agente_…): escolhe pelo nome/pasta e LÊ o conteúdo."""
+def _candidatos_drive(palavras: list[str], inteiras: list[str] | tuple = ()) -> tuple[dict[str, dict], list[str]]:
+    """Resto do Drive (fora das pastas Agente_…): escolhe pelo nome/pasta e LÊ o conteúdo.
+    As pastas `inteiras` (ex.: EBOOKS/) entram com TODOS os documentos: o nome do livro raramente diz o tema."""
     from . import drive
     con = sqlite3.connect(PASTA / "catalogo.db", timeout=120)
-    filtro = " OR ".join("lower(nome) LIKE ? OR lower(caminho) LIKE ?" for _ in palavras)
-    args = [a for p in palavras for a in (f"%{p}%", f"%{p}%")]
-    linhas = con.execute(f"SELECT caminho FROM drive WHERE caminho NOT LIKE 'Agente\\_%' ESCAPE '\\' "
-                         f"AND ({filtro})", args).fetchall()
+    filtro = " OR ".join(["lower(nome) LIKE ? OR lower(caminho) LIKE ?" for _ in palavras] +
+                         ["caminho LIKE ?" for _ in inteiras])
+    args = [a for p in palavras for a in (f"%{p}%", f"%{p}%")] + [f"{p}%" for p in inteiras]
+    linhas = con.execute(f"SELECT caminho, nome, tamanho, md5 FROM drive WHERE caminho NOT LIKE 'Agente\\_%' "
+                         f"ESCAPE '\\' AND ({filtro})", args).fetchall()
+    no_hd = _copias_no_hd(con)
     con.close()
-    saida, midias = {}, []
-    for (caminho,) in linhas:
+    # cópias idênticas (mesma impressão digital do Google) são lidas uma vez só; a da pasta de duplicados perde
+    linhas.sort(key=lambda l: l[0].startswith(DUPLICADOS))
+    saida, midias, vistos = {}, [], set()
+    for caminho, nome, tamanho, md5 in linhas:
+        if md5:
+            if md5 in vistos:
+                continue
+            vistos.add(md5)
         ext = Path(caminho).suffix.lower()
         if ext in MIDIA:
             midias.append(caminho)
         elif ext in EXTENSOES_DRIVE:
+            # a mesma obra no HD (mesmo nome e tamanho) é lida de lá: segundos, em vez de baixar da nuvem
+            local = no_hd.get(((nome or "").lower(), tamanho))
             saida[f"drive:{caminho}"] = {"titulo": Path(caminho).stem, "fonte": "drive", "texto": None,
-                                         "local": str(drive.caminho_local(caminho))}
+                                         "local": local if local and Path(local).exists()
+                                         else str(drive.caminho_local(caminho))}
     return saida, midias
+
+
+DUPLICADOS = "DUPLICADOS PARA REVISAR/"
+
+
+def _copias_no_hd(con) -> dict[tuple[str, int], str]:
+    try:
+        return {((n or "").lower(), t): c for c, n, t in con.execute("SELECT caminho, nome, tamanho FROM arquivos")}
+    except sqlite3.OperationalError:
+        return {}
+
+
+def local_do_drive(caminho: str) -> str:
+    """Onde ler um arquivo do Drive: a cópia idêntica do HD, se houver; senão o próprio Drive (G:)."""
+    from . import drive
+    caminho = caminho.removeprefix("drive:")
+    con = sqlite3.connect(PASTA / "catalogo.db", timeout=120)
+    try:
+        linha = con.execute("SELECT nome, tamanho FROM drive WHERE caminho = ?", (caminho,)).fetchone()
+        if linha:
+            achado = con.execute("SELECT caminho FROM arquivos WHERE lower(nome) = ? AND tamanho = ?",
+                                 ((linha[0] or "").lower(), linha[1])).fetchone()
+            if achado and Path(achado[0]).exists():
+                return achado[0]
+    except sqlite3.OperationalError:
+        pass
+    finally:
+        con.close()
+    return str(drive.caminho_local(caminho))
+
+
+def _amostras() -> sqlite3.Connection:
+    con = sqlite3.connect(PASTA / "amostras.db", timeout=60)
+    con.execute("CREATE TABLE IF NOT EXISTS amostras (caminho TEXT PRIMARY KEY, texto TEXT)")
+    return con
+
+
+def amostra_guardada(caminho: str) -> str | None:
+    con = _amostras()
+    linha = con.execute("SELECT texto FROM amostras WHERE caminho = ?", (caminho,)).fetchone()
+    con.close()
+    return linha[0] if linha else None
+
+
+def guardar_amostra(caminho: str, texto: str) -> None:
+    texto = texto or ""
+    pontos = [texto[int(len(texto) * f): int(len(texto) * f) + 1500] for f in (0.3, 0.55, 0.8)]
+    resumo = texto if len(texto) <= 9000 else "\n[…]\n".join([texto[:3000]] + pontos)
+    con = _amostras()
+    con.execute("INSERT OR REPLACE INTO amostras VALUES (?, ?)", (caminho, resumo))
+    con.commit()
+    con.close()
+
+
+# OCR (IA de visão na placa de vídeo) liberado agora? O acervo dos agentes só libera depois dos idiomas.
+OCR_PERMITIDO = lambda: True  # noqa: E731
+
+
+def ler_para_julgar(caminho: str) -> tuple[str, bool]:
+    """(texto, adiado). Texto INTEIRO dos documentos com texto; PDF escaneado: OCR de 5 páginas espalhadas
+    (não do livro todo: é só para julgar o tema) — ou ADIADO, se a placa de vídeo ainda não está liberada."""
+    from . import extrator, leitor
+    if Path(caminho).suffix.lower() == ".pdf":
+        antigo = extrator.LIMITE
+        extrator.LIMITE = 3_000_000
+        try:
+            metodo, texto = extrator.extrair(caminho)
+        finally:
+            extrator.LIMITE = antigo
+        if metodo != "ilegível":
+            return texto or "", False
+        if not OCR_PERMITIDO():
+            return "", True
+        return leitor._ler_pdf_escaneado(caminho, paginas=5, espalhadas=True)[1], False
+    return leitor.ler_completo(caminho)[2] or "", False
 
 
 def _ler_drive(item: dict) -> str:
@@ -240,7 +342,13 @@ def _julgar(tema: dict, lote: list[tuple[str, dict]]) -> dict[str, tuple[bool, s
                "(10 = é inteiramente sobre isso; 5 = toca no tema; 0 = outro assunto). Seja exigente: material de "
                "outra área que só usa palavras como 'aprender' ou 'estudo' recebe nota baixa. Responda SOMENTE JSON: "
                '[{"n": 1, "nota": 8, "tema": "assunto em até 6 palavras"}, ...]')
-    pedido = f"TEMA da biblioteca: {tema['descricao']}.\nNOTA BAIXA para: {tema['nao']}.\n\nMateriais:\n\n{itens}"
+    secoes = tema.get("secoes") or []
+    pedido = f"TEMA da biblioteca: {tema['descricao']}.\nNOTA BAIXA para: {tema['nao']}.\n"
+    if secoes:   # para organizar a pasta do agente: cada material numa seção fixa
+        sistema = sistema.replace('"tema": "assunto em até 6 palavras"}',
+                                  '"tema": "assunto em até 6 palavras", "secao": "uma das SEÇÕES"}')
+        pedido += f"SEÇÕES (escolha exatamente uma para cada material): {'; '.join(secoes)}.\n"
+    pedido += f"\nMateriais:\n\n{itens}"
     _, r = provedores.chamar_com_reserva(JUIZES, sistema, pedido, log=lambda *_: None)
     dados = json.loads(re.search(r"\[.*\]", r, re.S).group(0))
     saida = {}
@@ -248,7 +356,9 @@ def _julgar(tema: dict, lote: list[tuple[str, dict]]) -> dict[str, tuple[bool, s
         n = int(d.get("n", 0))
         if 1 <= n <= len(lote):
             nota = float(d.get("nota", 0))
-            saida[lote[n - 1][0]] = (nota >= NOTA_MINIMA, f"{str(d.get('tema', ''))[:60]}")
+            secao = str(d.get("secao", "")).strip()
+            secao = next((s for s in secoes if s.lower() == secao.lower()), "")
+            saida[lote[n - 1][0]] = (nota >= NOTA_MINIMA, f"{str(d.get('tema', ''))[:60]}", secao)
     return saida
 
 
@@ -257,7 +367,7 @@ def _candidatos_fixos(tema: dict) -> dict[str, dict]:
     saida = {}
     for pasta in tema.get("pastas_fixas", []):
         for p in sorted(Path(pasta).expanduser().rglob("*")):
-            if p.is_file() and p.suffix.lower() in (".md", ".txt"):
+            if p.is_file() and p.suffix.lower() in (".md", ".txt") and not _eh_markdown_de_agente(str(p)):
                 texto = p.read_text(encoding="utf-8", errors="replace")
                 titulo = next((l.split(":", 1)[1].strip() for l in texto.splitlines()[:6] if l.startswith("titulo:")), p.stem)
                 saida[str(p)] = {"titulo": titulo, "fonte": "fixa", "texto": texto}
@@ -267,8 +377,8 @@ def _candidatos_fixos(tema: dict) -> dict[str, dict]:
 def _todos_candidatos(agente: str) -> tuple[dict, list]:
     tema = TEMAS[agente]
     candidatos = _candidatos_acervo(tema["termos"])
-    candidatos.update(_candidatos_bibliotecas(tema["termos"], {agente}))
-    do_drive, midias = _candidatos_drive(tema["drive_nomes"])
+    candidatos.update(_candidatos_bibliotecas(tema["termos"], {agente, tema.get("agente_pasta", "")}))
+    do_drive, midias = _candidatos_drive(tema["drive_nomes"], tema.get("drive_inteiras", ()))
     candidatos.update(do_drive)
     return candidatos, midias
 
@@ -284,7 +394,22 @@ def _gravar(agente: str, decisoes: dict) -> None:
                                                    encoding="utf-8")
 
 
-def montar(agente: str, log=print) -> dict:
+LIVROS = {".pdf", ".epub", ".mobi", ".azw3", ".djvu", ".doc", ".docx"}
+
+
+def _ordem(tema: dict):
+    """Primeiro a pasta do tema (ex.: EBOOKS/01. COMUNICAÇÃO), depois livros, depois o que já está lido nos HDs."""
+    prioridade = [p.lower() for p in tema.get("prioridade", [])]
+
+    def chave(par):
+        caminho, item = par
+        return (not any(p in caminho.lower() for p in prioridade),
+                Path(caminho).suffix.lower() not in LIVROS,
+                item.get("fonte") != "hd")
+    return chave
+
+
+def montar(agente: str, log=print, a_cada=None, indexar_no_fim: bool = True) -> dict:
     tema = TEMAS[agente]
     decisoes = _decisoes(agente)
     decisoes.pop("_midias_drive", None)
@@ -294,17 +419,37 @@ def montar(agente: str, log=print) -> dict:
     for c, i in fixos.items():   # entram direto
         decisoes[c] = {"entra": True, "tema": "fonte fixa", "titulo": i["titulo"], "fonte": "fixa"}
     candidatos.update(fixos)
-    pendentes = [(c, i) for c, i in candidatos.items() if c not in decisoes]
+    pendentes = sorted(((c, i) for c, i in candidatos.items() if c not in decisoes), key=_ordem(tema))
     log(f"   {len(candidatos):,} candidatos ({len(pendentes):,} ainda não lidos) · {len(midias)} vídeos/áudios no Drive")
-    inicio, feitos = time.time(), 0
+    inicio, feitos, adiados = time.time(), 0, 0
     for n in range(0, len(pendentes), LOTE):
         lote = pendentes[n:n + LOTE]
         for caminho, item in lote:
-            if item["texto"] is None:          # arquivo do Drive: lê agora
-                item["texto"] = _ler_drive(item)
+            if item.get("fonte") == "hd" and Path(caminho).suffix.lower() in DOCUMENTOS and Path(caminho).exists():
+                try:                           # o acervo guarda só o começo do documento: lê o corpo também
+                    completo, _ = ler_para_julgar(caminho)
+                    if len(completo) > len(item["texto"] or ""):
+                        item["texto"] = completo
+                except Exception:  # noqa: BLE001
+                    pass
+            if item["texto"] is None:          # arquivo do Drive: lê agora (ou usa a amostra já guardada)
+                guardada = amostra_guardada(caminho)
+                if guardada is not None:
+                    item["texto"], item["so_amostra"] = guardada, True
+                else:
+                    try:
+                        texto, adiado = ler_para_julgar(item["local"])
+                    except Exception:  # noqa: BLE001
+                        texto, adiado = "", False
+                    if adiado:                 # escaneado: espera a placa de vídeo (fica pendente, não é descartado)
+                        item["texto"], item["adiado"] = "", True
+                    else:
+                        item["texto"] = texto
+                        guardar_amostra(caminho, texto)
         legiveis = [(c, i) for c, i in lote if (i["texto"] or "").strip()]
+        adiados += sum(1 for _, i in lote if i.get("adiado"))
         for c, i in lote:
-            if not (i["texto"] or "").strip():
+            if not (i["texto"] or "").strip() and not i.get("adiado"):
                 decisoes[c] = {"entra": False, "tema": "sem texto legível", "titulo": i["titulo"], "fonte": i["fonte"]}
         if legiveis:
             try:
@@ -319,19 +464,115 @@ def montar(agente: str, log=print) -> dict:
                         pass
             for c, i in legiveis:
                 if c in veredito:
-                    entra, assunto = veredito[c]
-                    decisoes[c] = {"entra": entra, "tema": assunto, "titulo": i["titulo"], "fonte": i["fonte"]}
+                    entra, assunto, *resto = veredito[c]
+                    decisoes[c] = {"entra": entra, "tema": assunto, "titulo": i["titulo"], "fonte": i["fonte"],
+                                   "secao": resto[0] if resto else ""}
         feitos += len(lote)
         if feitos % 60 < LOTE or feitos == len(pendentes):
             _gravar(agente, decisoes)
             aprovados = sum(1 for d in decisoes.values() if d["entra"])
             log(f"   lidos {feitos:,}/{len(pendentes):,} · aprovados até agora: {aprovados:,} "
-                f"({(time.time() - inicio) / 60:.0f} min)")
+                f"({(time.time() - inicio) / 60:.0f} min)"
+                + (f" · {adiados} escaneados esperando a placa de vídeo" if adiados else ""))
+            if a_cada:
+                a_cada()
     _gravar(agente, decisoes)
     decisoes["_midias_drive"] = midias
     _gravar(agente, decisoes)
-    total = indexar(agente, candidatos, log)
-    return total
+    if not indexar_no_fim:
+        return {"aprovados": sum(1 for c, d in decisoes.items() if not c.startswith("_") and d["entra"])}
+    return indexar(agente, candidatos, log)
+
+
+# ------------------------------------------------------------------ fase 2: vídeos/áudios do Drive
+def _ficha_lida(con, origem: str) -> str | None:
+    """Texto da transcrição já feita pelo Agente Leitor (fica no acervo: nunca transcreve duas vezes)."""
+    linha = con.execute("SELECT ficha FROM leituras WHERE caminho = ? AND status = 'lido'", (origem,)).fetchone()
+    if not linha or not linha[0] or not Path(linha[0]).exists():
+        return None
+    texto = Path(linha[0]).read_text(encoding="utf-8", errors="replace")
+    return texto.split("---", 2)[-1] if texto.startswith("---") else texto
+
+
+def _candidatos_midias(midias: list[str]) -> dict[str, dict]:
+    """Vídeos/áudios do Drive que já têm transcrição (para entrar na biblioteca quando aprovados)."""
+    from .leitor import _tabelas
+    con = _tabelas()
+    saida = {}
+    for caminho in midias:
+        texto = _ficha_lida(con, f"drive:{caminho}")
+        if texto is not None:
+            saida[f"drive:{caminho}"] = {"titulo": Path(caminho).stem, "fonte": "drive-midia", "texto": texto}
+    con.close()
+    return saida
+
+
+def midias_pendentes(agente: str) -> list[str]:
+    decisoes = _decisoes(agente)
+    return [m for m in decisoes.get("_midias_drive", []) if f"drive:{m}" not in decisoes]
+
+
+def transcrever_midias(agente: str, limite: int | None = None, log=print, indexar_no_fim: bool = True) -> dict:
+    """FASE 2: transcreve (Whisper, no PC) os vídeos/áudios do Drive achados na curadoria, a IA julga o
+    conteúdo como nos documentos e os aprovados entram na biblioteca. Retomável: rode de novo e continua."""
+    from . import drive, leitor
+    tema = TEMAS[agente]
+    pendentes = midias_pendentes(agente)[:limite] if limite else midias_pendentes(agente)
+    log(f"🎬 {agente}: {len(pendentes)} vídeos/áudios do Drive para transcrever e julgar")
+    con = leitor._tabelas()
+    lote: list[tuple[str, dict]] = []
+    feitos, inicio = 0, time.time()
+
+    def julgar_lote() -> None:
+        decisoes = _decisoes(agente)
+        try:
+            veredito = _julgar(tema, lote)
+        except Exception:  # noqa: BLE001 — resposta fora do formato: um a um
+            veredito = {}
+            for par in lote:
+                try:
+                    veredito.update(_julgar(tema, [par]))
+                except Exception:  # noqa: BLE001
+                    pass
+        for c, i in lote:
+            if c in veredito:
+                entra, assunto, *resto = veredito[c]
+                decisoes[c] = {"entra": entra, "tema": assunto, "titulo": i["titulo"], "fonte": i["fonte"],
+                               "secao": resto[0] if resto else ""}
+                log(f"   {'✅' if entra else '—'} {i['titulo'][:70]} · {assunto}")
+        _gravar(agente, decisoes)
+        lote.clear()
+
+    for caminho in pendentes:
+        origem = f"drive:{caminho}"
+        texto = _ficha_lida(con, origem)
+        if texto is None:
+            local = drive.caminho_local(caminho)
+            if not local.exists():
+                log(f"   ⚠ não encontrado no G: {caminho}")
+                continue
+            try:
+                leitor.ler_e_registrar(con, origem, str(local))
+                con.commit()
+                texto = _ficha_lida(con, origem) or ""
+            except Exception as erro:  # noqa: BLE001
+                log(f"   ⚠ {Path(caminho).name}: {str(erro)[:100]}")
+                continue
+        feitos += 1
+        titulo = Path(caminho).stem
+        if not texto.strip():
+            decisoes = _decisoes(agente)
+            decisoes[origem] = {"entra": False, "tema": "sem fala transcrita", "titulo": titulo, "fonte": "drive-midia"}
+            _gravar(agente, decisoes)
+            continue
+        lote.append((origem, {"titulo": titulo, "fonte": "drive-midia", "texto": texto}))
+        log(f"   🎙 {feitos}/{len(pendentes)} {titulo[:70]} ({(time.time() - inicio) / 60:.0f} min)")
+        if len(lote) >= LOTE:
+            julgar_lote()
+    if lote:
+        julgar_lote()
+    con.close()
+    return indexar(agente, log=log) if indexar_no_fim else {}
 
 
 def indexar(agente: str, candidatos: dict | None = None, log=print) -> dict:
@@ -342,6 +583,7 @@ def indexar(agente: str, candidatos: dict | None = None, log=print) -> dict:
     if candidatos is None:
         candidatos, _ = _todos_candidatos(agente)
         candidatos.update(_candidatos_fixos(TEMAS[agente]))
+    candidatos = {**candidatos, **_candidatos_midias(_decisoes(agente).get("_midias_drive", []))}
     _caminho_indice(agente).unlink(missing_ok=True)   # refaz do zero: a biblioteca reflete as decisões atuais
     con = _conectar(agente)
     trechos = 0
@@ -349,7 +591,7 @@ def indexar(agente: str, candidatos: dict | None = None, log=print) -> dict:
         item = candidatos.get(caminho)
         if not item:
             continue
-        texto = item["texto"] if item["texto"] is not None else _ler_drive(item)
+        texto = item["texto"] if item["texto"] is not None and not item.get("so_amostra") else _ler_drive(item)
         if item["fonte"] == "hd" and Path(caminho).suffix.lower() in DOCUMENTOS and Path(caminho).exists():
             try:   # o acervo guarda só o início dos documentos: o aprovado entra por INTEIRO
                 from . import leitor
@@ -374,7 +616,7 @@ def indexar(agente: str, candidatos: dict | None = None, log=print) -> dict:
 
 def relatorio(agente: str) -> str:
     decisoes = _decisoes(agente)
-    midias = decisoes.pop("_midias_drive", [])
+    midias = [m for m in decisoes.pop("_midias_drive", []) if f"drive:{m}" not in decisoes]
     aprovados = [d for d in decisoes.values() if d["entra"]]
     from collections import Counter
     temas = Counter(d["tema"].lower() for d in aprovados)
@@ -383,5 +625,6 @@ def relatorio(agente: str) -> str:
               f"Fontes: {', '.join(f'{k}: {v}' for k, v in fontes.most_common())}",
               "Temas mais frequentes:"] + [f"• {t} ({n})" for t, n in temas.most_common(20)]
     if midias:
-        linhas.append(f"\n🎬 {len(midias)} vídeos/áudios do Drive ainda não transcritos (fase 2).")
+        linhas.append(f"\n🎬 {len(midias)} vídeos/áudios do Drive ainda não transcritos "
+                      f"(fase 2: python main.py curadoria {agente} --midias).")
     return "\n".join(linhas)

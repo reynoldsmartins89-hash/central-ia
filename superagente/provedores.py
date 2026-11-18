@@ -107,7 +107,15 @@ def _anthropic(modelo: str, sistema: str, mensagem: str) -> str:
     return "".join(b.get("text", "") for b in r.get("content", []) if b.get("type") == "text")
 
 
+# O plano gratuito do Groq recusa pedidos grandes (HTTP 413, ~8 mil tokens por minuto no gpt-oss-120b).
+# Pedidos acima deste tamanho pulam direto para o próximo modelo, sem gastar uma chamada à toa.
+GROQ_LIMITE_CARACTERES = int(os.getenv("GROQ_LIMITE_CARACTERES", "18000"))
+
+
 def _openai_compativel(provedor: str, modelo: str, sistema: str, mensagem: str) -> str:
+    if provedor == "groq" and len(sistema) + len(mensagem) > GROQ_LIMITE_CARACTERES:
+        raise ErroProvedor(f"pedido grande demais para o plano gratuito do Groq "
+                           f"({len(sistema) + len(mensagem)} caracteres)")
     base, nome_env = OPENAI_COMPATIVEIS[provedor]
     r = _post(base + "/chat/completions", {
         "model": modelo,
@@ -153,9 +161,14 @@ def _cli(ferramenta: str, sistema: str, mensagem: str) -> str:
         comando = [executavel, "--skip-trust"] + (["-m", modelo] if modelo else [])
     else:
         raise ErroProvedor(f"ferramenta de terminal desconhecida: {nome}")
+    ambiente = dict(os.environ)
+    if nome == "gemini":
+        # Sem a chave gratuita no ambiente, o Gemini CLI usa o login Google (plano Google AI Pro).
+        for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+            ambiente.pop(var, None)
     processo = subprocess.Popen(comando, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                                errors="replace", cwd=PASTA_CLI)
+                                errors="replace", cwd=PASTA_CLI, env=ambiente)
     try:
         saida, erros = processo.communicate(prompt, timeout=TIMEOUT_CLI)
     except subprocess.TimeoutExpired as erro:

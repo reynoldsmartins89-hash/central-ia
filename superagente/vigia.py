@@ -155,6 +155,7 @@ def tarefas_padrao() -> list[Tarefa]:
     from . import vagas
     if vagas.PERFIL.exists() and vagas.perfil_preenchido(vagas.carregar_perfil()):   # só com o perfil preenchido
         tarefas.append(Tarefa("vagas", "o Caçador de Vagas", [["vagas", "buscar"]], repetir_a_cada=4 * 3600))
+    tarefas.append(Tarefa("radar", "o Radar de Cursos de Segurança (3 agentes)", [["radar"]], repetir_a_cada=6 * 3600))
     if (Path.home() / ".central-ia" / "openwebui" / ".venv" / "Scripts" / "open-webui.exe").exists():
         tarefas += [Tarefa("roteador", "a Central como modelo único", [["roteador"]], repetir_a_cada=30),
                     Tarefa("openwebui", "a tela de conversa (Open WebUI)", [["openwebui"]], repetir_a_cada=30)]

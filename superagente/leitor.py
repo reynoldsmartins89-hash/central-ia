@@ -28,7 +28,7 @@ from . import extrator
 from .curador import PASTAS_DE_PROGRAMA, SINAIS_DE_PROGRAMA, _conectar
 
 PASTA_LEITURAS = Path(os.getenv("LEITURAS_PASTA") or (Path.home() / ".central-ia" / "leituras"))
-AUDIO_VIDEO = {".mp3", ".opus", ".m4a", ".wav", ".ogg", ".flac", ".aac", ".wma",
+AUDIO_VIDEO = {".mp3", ".opus", ".m4a", ".m4b", ".wav", ".ogg", ".flac", ".aac", ".wma",
                ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".3gp", ".mpg", ".mpeg"}
 IMAGEM = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".heic"}
 MODELO_VISAO = os.getenv("MODELO_VISAO", "gemma3:4b")
@@ -177,12 +177,17 @@ def _ler_imagem(caminho: str) -> tuple[str, str]:
         return f"visão local ({MODELO_VISAO})", _ver_imagem(_png(img), PEDIDO_IMAGEM)
 
 
-def _ler_pdf_escaneado(caminho: str, paginas: int = 6) -> tuple[str, str]:
+def _ler_pdf_escaneado(caminho: str, paginas: int = 6, espalhadas: bool = False) -> tuple[str, str]:
+    """OCR das primeiras `paginas`; com `espalhadas`, de páginas do começo, do meio e do fim (para julgar o tema)."""
     import pypdfium2
     pdf = pypdfium2.PdfDocument(caminho)
     total = len(pdf)
+    if espalhadas and total > paginas:
+        escolhidas = sorted({min(total - 1, int(total * f)) for f in (0.02, 0.1, 0.3, 0.55, 0.8)[:paginas]})
+    else:
+        escolhidas = list(range(min(paginas, total)))
     partes = []
-    for i in range(min(paginas, total)):
+    for i in escolhidas:
         imagem = pdf[i].render(scale=1.5).to_pil()
         partes.append(f"## Página {i + 1}\n" + _ver_imagem(_png(imagem, 1600),
                       "Transcreva fielmente todo o texto desta página digitalizada, em português."))

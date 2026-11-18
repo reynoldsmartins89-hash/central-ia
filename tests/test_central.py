@@ -582,10 +582,20 @@ class TestGerenciadorEmails(unittest.TestCase):
     def test_caixa_de_entrada_guarda_so_o_que_pede_voce(self):
         d = self.emails.destino
         base = {"pasta": "INBOX", "confianca": 0.9, "acao": 0}
-        self.assertEqual(d({**base, "categoria": "promocoes"}), "10 Promoções")
+        self.assertEqual(d({**base, "categoria": "promocoes"}), "15 Promoções")
         self.assertEqual(d({**base, "categoria": "importante"}), "")
         self.assertEqual(d({**base, "categoria": "faculdade", "acao": 1}), "")
         self.assertEqual(d({**base, "categoria": "promocoes", "confianca": 0.5}), "")
+
+    def test_remetente_frequente_ganha_subpasta(self):
+        e = self.emails
+        base = {"conta": "YAHOO", "pasta": "INBOX", "categoria": "promocoes", "confianca": 0.9, "acao": 0}
+        loja = [{**base, "de_nome": "Amazon.com.br", "de_email": f"n{i}@news.amazon.com.br"} for i in range(8)]
+        avulso = [{**base, "de_nome": "Loja X", "de_email": "a@lojax.com"}]
+        r = e.com_subpastas(loja + avulso)
+        self.assertEqual(r[0]["destino"], "15 Promoções/Amazon.com.br")
+        self.assertEqual(r[-1]["destino"], "15 Promoções")
+        self.assertEqual(e.chave_remetente({"de_email": "x@mail.funib.edu.br"}), "funib.edu.br")
 
     def test_ler_classificar_mover_e_desfazer_sem_apagar(self):
         e = self.emails
@@ -597,7 +607,7 @@ class TestGerenciadorEmails(unittest.TestCase):
         self.assertEqual(e.classificar(conta, usar_ia=False, log=lambda *_: None), 3)
         movidos = e.aplicar(conta, log=lambda *_: None)
         self.assertEqual(movidos, 2)  # promoção + faculdade; o e-mail pessoal fica
-        self.assertEqual(sorted(servidor.caixas), ["Central", "Central/02 Faculdade", "Central/10 Promo&AOcA9Q-es",
+        self.assertEqual(sorted(servidor.caixas), ["Central", "Central/03 Faculdade e P&APM-s", "Central/15 Promo&AOcA9Q-es",
                                                    "INBOX"])
         self.assertEqual(sum(len(v) for v in servidor.caixas.values()), 3)  # nada sumiu
         self.assertFalse(servidor.apagou)
@@ -750,6 +760,164 @@ class TestExportarCuradoria(unittest.TestCase):
             self.assertIn("Origem: `D:/a.pdf`", texto)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_fase2_transcreve_julga_e_indexa_midias_do_drive(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from superagente import conhecimento, curador, curadoria, drive, leitor
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "G" / "Cursos").mkdir(parents=True)
+            for nome in ("Liderança situacional.mp4", "Gás offshore.mp4"):
+                (tmp / "G" / "Cursos" / nome).write_bytes(b"video")
+            curador.PASTA = tmp / "estado"
+            curador.CATALOGO = curador.PASTA / "catalogo.db"
+            leitor.PASTA_LEITURAS = tmp / "leituras"
+            curadoria.PASTA_DECISOES = tmp / "curadoria"
+            curadoria._gravar("lider", {"_midias_drive": ["Cursos/Liderança situacional.mp4", "Cursos/Gás offshore.mp4"]})
+            transcricoes = {"Liderança situacional": "O líder adapta o estilo à maturidade do liderado. " * 20,
+                            "Gás offshore": "Plataformas de petróleo e a exportação de gás natural. " * 20}
+
+            def falso_transcrever(caminho):
+                return "whisper-teste", transcricoes[Path(caminho).stem]
+
+            def falso_julgar(tema, lote):
+                return {c: ("líder" in i["texto"], "liderança situacional" if "líder" in i["texto"] else "petróleo")
+                        for c, i in lote}
+
+            with mock.patch.object(drive, "MONTAGEM", str(tmp / "G")), \
+                 mock.patch.object(leitor, "_transcrever", side_effect=falso_transcrever) as transcrever, \
+                 mock.patch.object(curadoria, "_julgar", side_effect=falso_julgar), \
+                 mock.patch.object(conhecimento, "PASTA_INDICES", tmp / "indices"):
+                curadoria.transcrever_midias("lider", log=lambda *_: None)
+                self.assertEqual(curadoria.midias_pendentes("lider"), [])
+                decisoes = json.loads((tmp / "curadoria" / "lider.json").read_text(encoding="utf-8"))
+                self.assertTrue(decisoes["drive:Cursos/Liderança situacional.mp4"]["entra"])
+                self.assertFalse(decisoes["drive:Cursos/Gás offshore.mp4"]["entra"])
+                self.assertNotIn("ainda não transcritos", curadoria.relatorio("lider"))
+                n = curadoria.exportar_md("lider", str(tmp / "saida"), log=lambda *_: None)
+                self.assertEqual(n, 1)
+                self.assertIn("maturidade", next((tmp / "saida").glob("*.md")).read_text(encoding="utf-8"))
+                curadoria.transcrever_midias("lider", log=lambda *_: None)   # rodar de novo: nada a refazer
+                self.assertEqual(transcrever.call_count, 2)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_acervo_agentes_monta_pasta_markdown_organizada_sem_apagar(self):
+        import json
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from superagente import acervo_agentes, conhecimento, curadoria
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            drive_ = tmp / "Meu Drive"
+            propria = drive_ / "Agente_Comunicacao"
+            (propria / "ORATÓRIA" / "Curso X").mkdir(parents=True)
+            (propria / "ORATÓRIA" / "Curso X" / "Aula 1.mp4").write_bytes(b"video")
+            (propria / "ORATÓRIA" / "Curso X" / "Aula 1.md").write_text("Fale devagar e olhe a plateia. " * 20, encoding="utf-8")
+            (propria / "CARISMA" / "Carisma" / "Carisma-002.zip.001" / "Modulo 2").mkdir(parents=True)
+            (propria / "CARISMA" / "Carisma" / "Carisma-002.zip.001" / "Modulo 2" / "Perguntas.md").write_text(
+                '---\ncurso_ou_area: "Carisma"\ntipo_documento: "Mídia (.mp4)"\ntitulo: "Perguntas"\n---\n' + "Sorria. " * 9000,
+                encoding="utf-8")
+            (propria / "PERSUASÃO").mkdir()
+            (propria / "PERSUASÃO" / "Resumo.md").write_text("Reciprocidade e prova social. " * 20, encoding="utf-8")
+            original = (propria / "PERSUASÃO" / "Resumo.md").read_text(encoding="utf-8")
+            with mock.patch.object(acervo_agentes, "DRIVE", drive_), \
+                 mock.patch.object(acervo_agentes, "PASTA_ESTADO", tmp / "estado"), \
+                 mock.patch.object(curadoria, "PASTA_DECISOES", tmp / "curadoria"), \
+                 mock.patch.object(conhecimento, "PASTA_INDICES", tmp / "indices"):
+                acervo_agentes._registrar_temas()
+                # um livro de lógica do HD, aprovado pela curadoria (lido pelo conteúdo)
+                curadoria._gravar("md_comunicacao", {"E:/Livros/Logica.pdf": {
+                    "entra": True, "tema": "silogismos", "titulo": "Lógica Menor", "fonte": "hd",
+                    "secao": "Lógica e Argumentação"}})
+                # o texto INTEIRO do aprovado é lido na hora de gravar (o julgamento só viu uma amostra)
+                with mock.patch.object(acervo_agentes, "_texto_completo",
+                                       return_value="Todo homem é mortal. " * 7000) as completo:
+                    n = acervo_agentes.exportar("comunicacao", log=lambda *_: None)
+                completo.assert_called_once()
+                self.assertEqual(n, 4)
+                md = propria / "Agente_Comunicacao_Markdown"
+                self.assertTrue((md / "Cursos" / "Curso X" / "Aula 1.md").exists())
+                self.assertTrue((md / "Cursos" / "Carisma" / "Modulo 2" / "Perguntas.md").exists())
+                self.assertTrue((md / "Textos e Apostilas" / "Persuasão" / "Resumo.md").exists())
+                livro = md / "Livros" / "Lógica e Argumentação" / "Lógica Menor.md"
+                self.assertIn("tipo: Livro", livro.read_text(encoding="utf-8"))
+                self.assertIn("Lógica Menor", (md / "00 - ÍNDICE.md").read_text(encoding="utf-8"))
+                self.assertEqual(acervo_agentes.exportar("comunicacao", log=lambda *_: None), 0)   # retomável
+                # originais intactos; o agente passa a ler a pasta Markdown
+                self.assertEqual((propria / "PERSUASÃO" / "Resumo.md").read_text(encoding="utf-8"), original)
+                conhecimento.indexar("comunicacao", propria, log=lambda *_: None)
+                con = sqlite3.connect(conhecimento._caminho_indice("comunicacao"))
+                caminhos = {c for (c,) in con.execute("SELECT caminho FROM arquivos")}
+                con.close()
+                self.assertTrue(all(not c.startswith("ORATÓRIA") for c in caminhos))
+                self.assertIn(str(Path("Livros", "Lógica e Argumentação", "Lógica Menor.md")), caminhos)
+                # as cópias .md nunca voltam como candidatas da curadoria
+                self.assertTrue(curadoria._eh_markdown_de_agente(str(md / "Livros" / "x.md")))
+                self.assertNotIn(str(md / "Livros" / "Lógica e Argumentação" / "Lógica Menor.md"),
+                                 curadoria._candidatos_fixos(curadoria.TEMAS["md_comunicacao"]))
+            acervo_agentes._registrar_temas()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_curadoria_le_pasta_ebooks_inteira_e_prioriza_o_tema(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from superagente import acervo_agentes, curadoria
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            con = sqlite3.connect(tmp / "catalogo.db")
+            con.execute("CREATE TABLE drive (nome TEXT, caminho TEXT, tamanho INTEGER, md5 TEXT)")
+            con.executemany("INSERT INTO drive VALUES (?, ?, ?, ?)", [(Path(c).name, c, n, m) for c, n, m in (
+                ("EBOOKS/10. SAÚDE/Dieta.pdf", 10, "a"),
+                ("EBOOKS/01. COMUNICAÇÃO/Aristóteles - Arte Retórica.pdf", 20, "b"),
+                ("DUPLICADOS PARA REVISAR/EBOOKS/01. COMUNICAÇÃO/Aristóteles - Arte Retórica.pdf", 20, "b"),
+                ("Outros/Planilha.pdf", 30, "c"), ("Outros/Curso de oratória.pdf", 40, "d"))])
+            (tmp / "hd").mkdir()
+            (tmp / "hd" / "Dieta.pdf").write_bytes(b"x" * 10)
+            con.execute("CREATE TABLE arquivos (caminho TEXT, nome TEXT, tamanho INTEGER)")
+            con.execute("INSERT INTO arquivos VALUES (?, 'Dieta.pdf', 10)", (str(tmp / "hd" / "Dieta.pdf"),))
+            con.commit()
+            con.close()
+            with mock.patch.object(curadoria, "PASTA", tmp), \
+                 mock.patch("superagente.drive.caminho_local", side_effect=lambda c: tmp / c):
+                tema = curadoria.TEMAS["md_comunicacao"]
+                achados, _ = curadoria._candidatos_drive(["oratór"], tema["drive_inteiras"])
+                self.assertIn("drive:EBOOKS/10. SAÚDE/Dieta.pdf", achados)          # nome não diz o tema: entra
+                self.assertIn("drive:Outros/Curso de oratória.pdf", achados)
+                self.assertNotIn("drive:Outros/Planilha.pdf", achados)
+                self.assertNotIn("drive:DUPLICADOS PARA REVISAR/EBOOKS/01. COMUNICAÇÃO/Aristóteles - Arte Retórica.pdf",
+                                 achados)                                          # cópia idêntica: lida uma vez
+                self.assertEqual(achados["drive:EBOOKS/10. SAÚDE/Dieta.pdf"]["local"], str(tmp / "hd" / "Dieta.pdf"))
+                self.assertEqual(curadoria.local_do_drive("drive:EBOOKS/10. SAÚDE/Dieta.pdf"),
+                                 str(tmp / "hd" / "Dieta.pdf"))
+                ordem = sorted(achados.items(), key=curadoria._ordem(tema))
+                self.assertEqual(ordem[0][0], "drive:EBOOKS/01. COMUNICAÇÃO/Aristóteles - Arte Retórica.pdf")
+                # a amostra fica guardada: o e-book não é baixado de novo para o próximo agente
+                curadoria.guardar_amostra("drive:x.pdf", "a" * 20000)
+                self.assertLess(len(curadoria.amostra_guardada("drive:x.pdf")), 10000)
+            self.assertEqual(acervo_agentes.DRIVE_INTEIRAS, ["EBOOKS/"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_pdf_escaneado_espera_a_placa_de_video_sem_ser_descartado(self):
+        from unittest import mock
+        from superagente import curadoria, extrator, leitor
+        with mock.patch.object(extrator, "extrair", return_value=("ilegível", "")), \
+             mock.patch.object(leitor, "_ler_pdf_escaneado", return_value=("ocr", "Retórica de Aristóteles")) as ocr:
+            with mock.patch.object(curadoria, "OCR_PERMITIDO", lambda: False):
+                self.assertEqual(curadoria.ler_para_julgar("E:/livro.pdf"), ("", True))
+                ocr.assert_not_called()
+            with mock.patch.object(curadoria, "OCR_PERMITIDO", lambda: True):
+                self.assertEqual(curadoria.ler_para_julgar("E:/livro.pdf"), ("Retórica de Aristóteles", False))
+                self.assertTrue(ocr.call_args.kwargs["espalhadas"])   # só algumas páginas, não o livro todo
 
 
 class TestDownloadDoTelegram(unittest.TestCase):

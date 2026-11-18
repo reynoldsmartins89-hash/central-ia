@@ -66,8 +66,8 @@ modelos = ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash", "gemini:gemini
 [agentes.revisor]
 descricao = "Revisa criticamente um texto: fatos, lógica, clareza e afirmações sem fonte."
 habilidade = "pesquisa/revisao-critica"
-# Claude é ótimo revisor; só é usado se ANTHROPIC_API_KEY existir (API é cobrada à parte).
-modelos = ["anthropic:claude-sonnet-5-5", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b"]
+# Claude é ótimo revisor: usa o Claude da sua assinatura (Claude Code), sem custo extra.
+modelos = ["cli:claude", "gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b"]
 
 [agentes.analista]
 descricao = "Planeja e interpreta análises de dados e gera código Python de análise."
@@ -137,6 +137,13 @@ base = "G:/Meu Drive/Agente_Filosofia_Catolica"
 privacidade = "nuvem"
 modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
 
+[agentes.filosofia]
+descricao = "Filósofo da filosofia tradicional (Santo Tomás e Santo Agostinho como base) fundamentado em TODO o seu acervo de filosofia: geral, católica, antiga, moderna e o COF."
+habilidade = "conhecimento/filosofia"
+base = "G:/Meu Drive/Agente_Filosofia"
+privacidade = "nuvem"
+modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
+
 [agentes.cof]
 descricao = "Especialista no Curso Online de Filosofia (COF) e e-books relacionados da sua biblioteca: filosofia, autoeducação e cultura."
 habilidade = "conhecimento/cof"
@@ -173,14 +180,14 @@ privacidade = "nuvem"
 modelos = ["groq:openai/gpt-oss-120b", "cli:codex", "gemini:gemini-3.5-flash", "ollama:qwen3:4b"]
 
 [agentes.cyberseguranca]
-descricao = "Especialista em cibersegurança DEFENSIVA fundamentado na sua biblioteca. Roda só no seu PC (privado)."
+descricao = "Especialista em cibersegurança DEFENSIVA fundamentado na sua biblioteca."
 habilidade = "conhecimento/cyberseguranca"
 base = "G:/Meu Drive/Agente_CyberSecurity"
 privacidade = "nuvem"   # decisão do Reynolds (09/11/2026): agente comum, como os outros
 modelos = ["cli:claude", "gemini:gemini-3.5-flash", "groq:openai/gpt-oss-120b", "cli:codex", "ollama:qwen3:4b"]
 
 [agentes.seguranca_publica]
-descricao = "Especialista em segurança pública fundamentado na sua biblioteca. Roda só no seu PC (privado)."
+descricao = "Especialista em segurança pública fundamentado na sua biblioteca."
 habilidade = "conhecimento/seguranca-publica"
 base = "G:/Meu Drive/Agente_Seguranca_Publica"
 privacidade = "nuvem"   # decisão do Reynolds (09/11/2026): agente comum, como os outros

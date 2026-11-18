@@ -74,6 +74,9 @@ def indexar(agente: str, pasta: str | Path, log=print) -> dict:
     pasta = Path(pasta)
     if not pasta.is_dir():
         raise FileNotFoundError(f"pasta da biblioteca não encontrada: {pasta}")
+    markdown = pasta / f"{pasta.name}_Markdown"
+    if markdown.is_dir() and any(markdown.iterdir()):
+        pasta = markdown   # a pasta Agente_X_Markdown reúne tudo, já organizado: é ela que o agente lê
     con = _conectar(agente)
     conhecidos = dict(con.execute("SELECT caminho, modificado FROM arquivos"))
     vistos, novos, ignorados, inicio = set(), 0, 0, time.time()

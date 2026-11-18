@@ -150,6 +150,12 @@ def main(argv: list[str] | None = None) -> int:
     c_vg.add_argument("acao", choices=["buscar", "perfil", "ultimas", "fontes"])
     c_vg.add_argument("--sem-ia", action="store_true", help="só coleta e filtra, sem avaliar com IA")
     c_vg.add_argument("--sem-aviso", action="store_true", help="avalia, mas não manda nada no Telegram")
+    c_rd = sub.add_parser("radar", help="Radar de Cursos de Segurança: 3 agentes vigiam DOU, web e Instagram")
+    c_rd.add_argument("--sem-web", action="store_true", help="só o Diário Oficial (sem busca na web/Instagram)")
+    c_rd.add_argument("--sem-aviso", action="store_true", help="não manda nada no Telegram")
+    c_cb = sub.add_parser("cerebro", help="Cérebro: cruza o Histórico das IAs no Obsidian (temas, ligações, insights)")
+    c_cb.add_argument("--sem-ia", action="store_true", help="só refaz as ligações com o que já foi classificado")
+    c_cb.add_argument("--sem-insights", action="store_true", help="classifica e liga, sem gerar a nota de insights")
     sub.add_parser("vigia", help="Agente Vigia: mantém bot e leitura ligados, religa o que cair e avisa no Telegram")
     c_gr = sub.add_parser("grupos", help="relatórios de grupos do WhatsApp e do Telegram")
     c_gr.add_argument("acao", choices=["importar", "telegram", "relatorio", "pedido", "listar", "entrar-telegram",
@@ -162,6 +168,12 @@ def main(argv: list[str] | None = None) -> int:
     c_cu.add_argument("--relatorio", action="store_true", help="só mostra o que já foi decidido")
     c_cu.add_argument("--reindexar", action="store_true", help="refaz a biblioteca com as decisões já tomadas")
     c_cu.add_argument("--exportar", default="", help="depois, grava cada material aprovado como .md nesta pasta")
+    c_cu.add_argument("--midias", action="store_true",
+                      help="fase 2: transcreve e julga os vídeos/áudios do Drive achados na curadoria")
+    c_cu.add_argument("--limite", type=int, default=None, help="em --midias: máximo de vídeos nesta rodada")
+    c_ac = sub.add_parser("acervo", help="Acervo dos agentes: todo material de cada tema vira .md em Agente_X_Markdown")
+    c_ac.add_argument("acao", choices=["rodar", "status", "exportar"])
+    c_ac.add_argument("agentes", nargs="*", help="só estes agentes (ex.: comunicacao filosofia)")
     c_md = sub.add_parser("markdown", help="converte TODOS os arquivos de uma pasta em .md (subpasta organizada)")
     c_md.add_argument("pasta")
     c_md.add_argument("--sem-midias", action="store_true", help="não transcreve vídeos/áudios")
@@ -248,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
             print(curadoria.relatorio(a.agente))
         elif a.reindexar:
             curadoria.indexar(a.agente)
+        elif a.midias:
+            curadoria.transcrever_midias(a.agente, a.limite)
+            print(curadoria.relatorio(a.agente))
         else:
             curadoria.montar(a.agente)
             print(curadoria.relatorio(a.agente))
@@ -315,6 +330,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(vagas.fontes())
         return 0
+    if a.comando == "radar":
+        from superagente import radar_cursos
+        radar_cursos.rodar(web=not a.sem_web, avisar=not a.sem_aviso)
+        return 0
+    if a.comando == "cerebro":
+        from superagente import cerebro
+        cerebro.rodar(usar_ia=not a.sem_ia, gerar_insights=not a.sem_insights)
+        return 0
     if a.comando == "vigia":
         from superagente import vigia
         vigia.rodar()
@@ -352,6 +375,16 @@ def main(argv: list[str] | None = None) -> int:
         elif a.alvo != "progresso":
             leitor.processar(a.alvo or None, a.tipos, a.limite, a.minutos)
         print(leitor.progresso())
+        return 0
+
+    if a.comando == "acervo":
+        from superagente import acervo_agentes
+        if a.acao == "rodar":
+            acervo_agentes.rodar(a.agentes or None)
+        elif a.acao == "exportar":
+            for chave in a.agentes or list(acervo_agentes.TEMAS):
+                acervo_agentes.exportar(chave)
+        print(acervo_agentes.status())
         return 0
 
     if a.comando == "pausar":
