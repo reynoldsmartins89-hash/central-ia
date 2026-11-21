@@ -175,6 +175,13 @@ class TestAprendizado(ComPastaTemporaria):
         texto = (self.tmp / "habilidades" / "geral" / "existente" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("faça Y", texto)
 
+    def test_avisa_com_botoes(self):
+        novas = aprendizado.revisar("trecho", chamar=self.resposta())
+        enviados = []
+        aprendizado.avisar_com_botoes(novas, lambda t, b=None: enviados.append(b))
+        self.assertEqual(enviados[0], None)                       # a mensagem de abertura
+        self.assertEqual(enviados[1][0][1], f"apr:sim:{novas[0]['id']}")
+
     def test_rejeitar_descarta(self):
         aprendizado.revisar("trecho", chamar=self.resposta())
         aprendizado.comando("nao todos")
@@ -243,6 +250,41 @@ class TestAgenda(ComPastaTemporaria):
             agendador.tick(agora + 3601 * i, enviar=avisos.append, rodar=quebra)
         self.assertFalse(agendador.listar()[0]["ativa"])
         self.assertTrue(any("Pausei" in a for a in avisos))
+
+    def test_linguagem_natural_pede_confirmacao_e_agenda(self):
+        enviados = []
+        resposta = '{"agendar": true, "quando": "todo dia 07:00", "pedido": "3 notícias de geopolítica", "modo": "rapido"}'
+        with mock.patch.object(agendador, "PENDENTES_NATURAIS", self.tmp / "nat.json"):
+            tratou = agendador.propor_natural("todo dia às 7 me mande 3 notícias de geopolítica",
+                                              lambda t, b=None: enviados.append((t, b)), chamar=lambda _: resposta)
+            self.assertTrue(tratou)
+            self.assertEqual(agendador.listar(), [])            # só agenda depois do ✅
+            codigo = enviados[0][1][0][1].split(":")[2]
+            self.assertIn("Agendado", agendador.confirmar_natural(codigo, True))
+            self.assertEqual(agendador.listar()[0]["pedido"], "3 notícias de geopolítica")
+            self.assertIn("já tinha sido decidido", agendador.confirmar_natural(codigo, True))
+
+    def test_mensagem_comum_nao_vira_agendamento(self):
+        self.assertFalse(agendador.parece_agendamento("o que você acha do artigo de hoje?"))
+        self.assertTrue(agendador.parece_agendamento("me lembre amanhã às 9 de pagar a conta"))
+        self.assertFalse(agendador.propor_natural("todo dia é uma luta", print,
+                                                  chamar=lambda _: '{"agendar": false}'))
+
+    def test_coerencia_barra_horario_inventado(self):
+        self.assertFalse(agendador.coerente("toda segunda às 8h prepare a pauta", "seg,qua,sex 08:30"))
+        self.assertFalse(agendador.coerente("toda segunda às 8h prepare a pauta", "seg 08:30"))
+        self.assertTrue(agendador.coerente("toda segunda às 8h prepare a pauta", "seg 08:00"))
+        self.assertTrue(agendador.coerente("todo dia às 7 da noite", "todo dia 19:00"))
+        self.assertTrue(agendador.coerente("de segunda a sexta às 6:30", "dias úteis 06:30"))
+        self.assertTrue(agendador.coerente("todo dia às 8 e meia", "todo dia 08:30"))
+        respostas = iter(['{"agendar": true, "quando": "seg,qua,sex 08:30", "pedido": "pauta", "modo": "rapido"}',
+                          '{"agendar": true, "quando": "seg 08:00", "pedido": "pauta", "modo": "rapido"}'])
+        self.assertEqual(agendador.extrair("toda segunda às 8h a pauta", chamar=lambda _: next(respostas))["quando"],
+                         "seg 08:00")
+
+    def test_lembrete_nao_chama_ia(self):
+        t = agendador.criar("em 15m", "pagar a conta de luz", modo="lembrete", agora=time.time())
+        self.assertEqual(agendador.executar(t), "⏰ Lembrete: pagar a conta de luz")
 
     def test_comando_agendar(self):
         self.assertIn("Agendado", agendador.comando_agendar("todo dia 07:00 | notícias"))

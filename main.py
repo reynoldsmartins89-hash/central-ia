@@ -335,7 +335,6 @@ def main(argv: list[str] | None = None) -> int:
         briefing.enviar(a.periodo)
         return 0
     if a.comando == "avisar":
-        from superagente import telegram
         telegram.enviar(a.texto)
         return 0
     if a.comando == "caixa":

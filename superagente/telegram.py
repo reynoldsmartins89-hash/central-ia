@@ -190,6 +190,9 @@ def pedir_aprovacao(texto: str, espera_max: int | None = None) -> bool:
                 enviar("↩️ Deixei o plano acima de lado (nada foi feito) para atender a sua nova mensagem.")
                 return False
             cb = u.get("callback_query") or {}
+            if (cb.get("data") or "").startswith(("apr:", "agd:")):
+                ADIADAS.append(u)   # toque num botão de aprendizado/agenda: atendido depois, não se perde
+                continue
             resposta, _, cod = (cb.get("data") or "").partition(":")
             if cod != codigo or str(cb.get("message", {}).get("chat", {}).get("id")) != os.getenv("TELEGRAM_CHAT_ID").strip():
                 continue

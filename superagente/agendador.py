@@ -164,8 +164,8 @@ def criar(quando: str, pedido: str, modo: str = "rapido", agora: float | None = 
     """modo: 'rapido' (uma IA responde) ou 'equipe' (o superagente monta a equipe, sem pedir aprovação)."""
     if not pedido.strip():
         raise ValueError("faltou o pedido")
-    if modo not in ("rapido", "equipe"):
-        raise ValueError("modo deve ser rapido ou equipe")
+    if modo not in ("rapido", "equipe", "lembrete"):
+        raise ValueError("modo deve ser rapido, equipe ou lembrete")
     regra = interpretar(quando)
     agora = agora or time.time()
     prox = regra["em"] if regra["tipo"] == "uma_vez" else proxima(regra, agora)
@@ -244,6 +244,8 @@ def _rodar_equipe(pedido: str) -> str:
 
 def executar(tarefa: dict, enviar=None, rodar=None) -> str:
     """Roda uma tarefa agora. `rodar(pedido) -> texto` permite testar offline."""
+    if rodar is None and tarefa["modo"] == "lembrete":   # lembrete simples: nenhuma IA é chamada
+        rodar = lambda pedido: f"⏰ Lembrete: {pedido}"  # noqa: E731
     rodar = rodar or (_rodar_equipe if tarefa["modo"] == "equipe" else _rodar_rapido)
     resposta = rodar(tarefa["pedido"]).strip()
     pasta = PASTA_SAIDA / str(tarefa["id"])
@@ -304,6 +306,140 @@ def em_segundo_plano(enviar, intervalo: int = 60) -> threading.Thread:
     t = threading.Thread(target=relogio, daemon=True, name="agenda")
     t.start()
     return t
+
+
+# ------------------------------------------------------------------ pedido em linguagem natural
+PISTAS = re.compile(
+    r"\b(todo dia|todos os dias|diariamente|toda (manh[ãa]|tarde|noite|semana)|dias [úu]teis|"
+    r"tod[oa]s? (as |os )?(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)s?|a cada \d+|"
+    r"daqui a \d+|amanh[ãa] (de manh[ãa] |à noite |às |as )|hoje (às|as) \d|"
+    r"(me )?(lembr[ae]|avis[ae])[- ]?(me )?.{0,40}\b(às|as) \d{1,2})", re.IGNORECASE)
+PENDENTES_NATURAIS = PASTA / "agenda_pendente.json"
+
+PEDIDO_EXTRAIR = """Hoje é {agora} ({dia_semana}). O Reynolds escreveu ao bot:
+«{texto}»
+
+Se for um pedido para fazer algo NUM HORÁRIO ou DE TEMPOS EM TEMPOS, converta para JSON:
+{{"agendar": true, "quando": "<um destes formatos>", "pedido": "<o que fazer, sem o horário>",
+  "modo": "lembrete|rapido|equipe"}}
+Formatos aceitos para "quando" (escolha o formato e preencha com os dias e o horário QUE ELE DISSE):
+  "em 30m" · "em 2h" · "a cada 6h" · "todo dia 07:00" · "seg,qua,sex 08:30" · "dias úteis 07:00" ·
+  "AAAA-MM-DD HH:MM" (para uma vez só, ex.: amanhã às 9h → a data de amanhã 09:00)
+modo: "lembrete" = só lembrar de algo (sem IA); "rapido" = uma IA pesquisa/escreve; "equipe" = trabalho grande.
+Se NÃO for um pedido de agendamento (ex.: pergunta comum que só cita um horário), responda {{"agendar": false}}.
+Responda SOMENTE o JSON."""
+DIAS_SEMANA = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+
+
+def parece_agendamento(texto: str) -> bool:
+    return bool(PISTAS.search(texto or ""))
+
+
+DIA_NO_TEXTO = {0: r"segunda|seg\b", 1: r"ter[çc]a|ter\b", 2: r"quarta|qua\b", 3: r"quinta|qui\b",
+                4: r"sexta|sex\b", 5: r"s[áa]bado|s[áa]b\b", 6: r"domingo|dom\b"}
+
+
+def coerente(texto: str, quando: str) -> bool:
+    """Confere se a IA não inventou: o horário e os dias entendidos precisam aparecer no que você escreveu."""
+    regra = interpretar(quando)
+    t = (texto or "").lower()
+    if regra["tipo"] == "semanal" and not re.search(r"dias [úu]teis|segunda a sexta", t):
+        if any(not re.search(DIA_NO_TEXTO[d], t) for d in regra["dias"]):
+            return False
+    hora = regra.get("hora")
+    if regra["tipo"] == "uma_vez" and re.search(r"\d{2}:\d{2}$", quando) and not re.search(r"\b(em|daqui a) \d", t):
+        hora = int(quando[-5:-3])
+    if hora is not None:
+        numeros = {int(n) for n in re.findall(r"\b(\d{1,2})(?=\s*(?:h|:|hs|horas)|\b)", t)}
+        tarde = bool(re.search(r"\b(da tarde|da noite|pm)\b", t))
+        candidatos = numeros | ({n + 12 for n in numeros if n < 12} if tarde else set())
+        if numeros and hora not in candidatos:
+            return False
+        minuto = regra.get("minuto", int(quando[-2:]) if regra["tipo"] == "uma_vez" and quando[-3:-2] == ":" else 0)
+        ditos = {int(m) for m in re.findall(r"\b\d{1,2}\s*[:h]\s*(\d{2})\b", t)} | ({30} if "e meia" in t else set())
+        if minuto and minuto not in ditos:
+            return False
+    return True
+
+
+def extrair(texto: str, chamar=None, agora: datetime | None = None) -> dict | None:
+    """Usa uma IA barata para transformar a frase em {quando, pedido, modo}. None se não for agendamento.
+    Se o entendido não bater com o texto (horário ou dias), tenta mais uma vez; depois desiste."""
+    agora = agora or datetime.now()
+    pedido = PEDIDO_EXTRAIR.format(agora=agora.strftime("%Y-%m-%d %H:%M"), dia_semana=DIAS_SEMANA[agora.weekday()],
+                                   texto=texto[:1500])
+    for tentativa in range(2):
+        if tentativa:
+            pedido += ("\n\nATENÇÃO: a resposta anterior usou dias ou horário que ele NÃO disse. Use exatamente "
+                       "os dias e o horário da mensagem dele; os formatos acima são só exemplos.")
+        if chamar is None:
+            from . import memoria, provedores
+            _, resposta = provedores.chamar_com_reserva(memoria.MODELOS_RESUMO, "Você converte pedidos em JSON.",
+                                                        pedido, log=lambda *_: None)
+        else:
+            resposta = chamar(pedido)
+        inicio, fim = resposta.find("{"), resposta.rfind("}")
+        if inicio < 0:
+            return None
+        dados = json.loads(resposta[inicio:fim + 1])
+        if not dados.get("agendar") or not str(dados.get("pedido") or "").strip():
+            return None
+        quando = str(dados.get("quando") or "")
+        interpretar(quando)   # ValueError se o formato vier errado
+        if coerente(texto, quando):
+            modo = dados.get("modo") if dados.get("modo") in ("lembrete", "rapido", "equipe") else "rapido"
+            return {"quando": quando, "pedido": dados["pedido"].strip(), "modo": modo}
+    return None
+
+
+def propor_natural(texto: str, enviar, chamar=None) -> bool:
+    """Se a mensagem pede algo com horário, mostra o entendido com ✅/❌. Devolve True se tratou a mensagem."""
+    if not parece_agendamento(texto):
+        return False
+    try:
+        dados = extrair(texto, chamar)
+    except Exception:  # noqa: BLE001 — não entendi: a mensagem segue o caminho normal
+        return False
+    if not dados:
+        return False
+    codigo = str(int(time.time() * 1000))
+    pendentes = {k: v for k, v in _ler_pendentes().items() if time.time() - v.get("ts", 0) < 7 * 86400}
+    pendentes[codigo] = {**dados, "ts": time.time()}
+    _gravar_pendentes(pendentes)
+    prox = proxima(interpretar(dados["quando"]), time.time())
+    quando_txt = datetime.fromtimestamp(prox).strftime("%d/%m %H:%M") if prox else "?"
+    tipo = {"lembrete": "lembrete", "rapido": "uma IA prepara", "equipe": "a equipe completa prepara"}[dados["modo"]]
+    enviar(f"🗓 Entendi assim:\n• O quê: {dados['pedido']}\n• Quando: {dados['quando']} (primeira vez {quando_txt})"
+           f"\n• Como: {tipo}\n\nAgendo?", [("✅ Agendar", f"agd:sim:{codigo}"), ("❌ Não", f"agd:nao:{codigo}")])
+    return True
+
+
+def _ler_pendentes() -> dict:
+    try:
+        return json.loads(PENDENTES_NATURAIS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _gravar_pendentes(dados: dict) -> None:
+    PASTA.mkdir(parents=True, exist_ok=True)
+    PENDENTES_NATURAIS.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def confirmar_natural(codigo: str, sim: bool) -> str:
+    pendentes = _ler_pendentes()
+    dados = pendentes.pop(codigo, None)
+    _gravar_pendentes(pendentes)
+    if not dados:
+        return "Esse agendamento já tinha sido decidido."
+    if not sim:
+        return "Ok, não agendei nada."
+    try:
+        t = criar(dados["quando"], dados["pedido"], dados["modo"])
+    except ValueError as erro:
+        return f"⚠ Não consegui agendar: {erro}"
+    return (f"🗓 Agendado (nº {t['id']}). Próxima vez: {datetime.fromtimestamp(t['proxima']):%d/%m/%Y %H:%M}. "
+            "Para ver ou apagar, é só me pedir: \"o que está agendado?\"")
 
 
 def comando_agendar(resto: str) -> str:

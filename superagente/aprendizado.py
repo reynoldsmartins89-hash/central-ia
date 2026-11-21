@@ -200,8 +200,7 @@ def talvez_revisar(motivo: str = "conversa", forcar: bool = False, avisar=None) 
             print(f"(revisão de aprendizado falhou: {erro})")
             return
         if novas and avisar:
-            avisar(f"💡 Aprendi {len(novas)} coisa(s) que podem me deixar melhor. "
-                   "Veja e aprove com /aprender (nada muda sem o seu OK).")
+            avisar_com_botoes(novas, avisar)
 
     t = threading.Thread(target=trabalhar, daemon=True)
     t.start()
@@ -218,6 +217,17 @@ def _formatar(p: dict) -> str:
                 f"   ↳ {p.get('porque', '')}{alerta}")
     return (f"{p['id']}. 🔧 Corrigir {p['caminho']}: «{str(p['antigo'])[:120]}» → «{str(p['novo'])[:120]}»\n"
             f"   ↳ {p.get('porque', '')}{alerta}")
+
+
+def avisar_com_botoes(novas: list[dict], enviar) -> None:
+    """Uma mensagem por proposta, com ✅/❌: você só toca, não precisa digitar nada."""
+    enviar(f"💡 Aprendi {len(novas)} coisa(s) nesta conversa. Toque em ✅ para eu guardar ou ❌ para descartar "
+           "(nada muda sem o seu toque).")
+    for p in novas:
+        texto = _formatar(p)
+        if p["tipo"] == "habilidade" and p.get("acao") == "criar":
+            texto += f"\n\nPrévia:\n{str(p['corpo'])[:700]}"
+        enviar(texto, [("✅ Guardar", f"apr:sim:{p['id']}"), ("❌ Descartar", f"apr:nao:{p['id']}")])
 
 
 def listar() -> str:

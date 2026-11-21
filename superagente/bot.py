@@ -29,7 +29,12 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 • /memoria — o que está guardado · /esquecer <nº> — apaga um fato
 • /lembrancas <assunto> — o que já conversamos sobre isso, em qualquer conversa antiga
 
-🌱 APRENDER E AGENDAR
+🌱 APRENDER E AGENDAR — tudo automático, sem comando
+• A Central aprende sozinha e manda cada novidade com ✅ Guardar / ❌ Descartar: é só tocar
+• Escreva normalmente: "todo dia às 7 me mande 3 notícias de geopolítica" ou
+   "me lembre amanhã às 9 de pagar a conta" → ela mostra o que entendeu → ✅ Agendar
+• "o que está agendado?" · "o que você aprendeu?" também funcionam
+(Os comandos abaixo continuam valendo, mas são opcionais.)
 • /aprender — o que a Central aprendeu sozinha (fatos e habilidades novas) para você aprovar
    /aprender sim <nº|todos> · /aprender nao <nº|todos> · /aprender ver <nº>
 • /agendar <quando> | <pedido> — tarefa que se repete sozinha
@@ -233,6 +238,8 @@ def tratar(texto: str) -> None:
         proposta = memoria.ultima_fala_central()
         if eh_confirmacao(texto) and proposta:
             _fazer_o_proposto(sa, texto, proposta)
+            return
+        if _automatico(texto):
             return
         pedido_grupo = _pedido_de_grupo(texto)
         if pedido_grupo:
@@ -601,6 +608,8 @@ def rodar() -> None:
             deslocamento = u["update_id"] + 1
             msg = u.get("message") or {}
             if not msg and u.get("callback_query"):
+                if _clique_automatico(u["callback_query"], meu_chat):
+                    continue
                 _clique_tardio(u["callback_query"], meu_chat)   # botão de um plano que já não espera resposta
                 continue
             if str(msg.get("chat", {}).get("id")) != meu_chat:
@@ -657,6 +666,53 @@ def rodar() -> None:
                 if papel == "pc_com_caixa":   # a nuvem continua a conversa se o PC desligar
                     import threading
                     threading.Thread(target=caixa_postal.enviar_memoria, daemon=True).start()
+
+
+def _clique_automatico(cb: dict, meu_chat: str) -> bool:
+    """Botões do aprendizado (apr:sim:7) e da agenda (agd:sim:123). Devolve True se eram deles."""
+    dados = cb.get("data") or ""
+    if not dados.startswith(("apr:", "agd:")):
+        return False
+    if str((cb.get("message") or {}).get("chat", {}).get("id")) != meu_chat:
+        return True
+    tipo, resposta, alvo = (dados.split(":") + ["", ""])[:3]
+    try:
+        telegram._api("answerCallbackQuery", {"callback_query_id": cb["id"],
+                                             "text": "Feito!" if resposta == "sim" else "Descartado."})
+    except Exception:  # noqa: BLE001
+        pass
+    if tipo == "apr":
+        from . import aprendizado
+        telegram.enviar(aprendizado.decidir(alvo, resposta == "sim"))
+    else:
+        from . import agendador
+        telegram.enviar(agendador.confirmar_natural(alvo, resposta == "sim"))
+    return True
+
+
+PERGUNTA_AGENDA = re.compile(r"\b(o que|quais|quais s[ãa]o|me mostre|mostre|liste).{0,25}"
+                             r"\b(agendad[oa]s?|agenda|lembretes?)\b", re.IGNORECASE)
+PERGUNTA_APRENDIZADO = re.compile(r"\b(o que|quais).{0,25}\b(aprendeu|aprendizad|propostas? pendentes?)\b",
+                                  re.IGNORECASE)
+
+
+def _automatico(texto: str) -> bool:
+    """Atende sem comando: agendar, ver a agenda e ver o que a Central aprendeu."""
+    if caixa_postal.papel() == "nuvem":
+        return False
+    from . import agendador
+    if PERGUNTA_AGENDA.search(texto) and len(texto) < 120:
+        telegram.enviar(agendador.formatar())
+        return True
+    if PERGUNTA_APRENDIZADO.search(texto) and len(texto) < 120:
+        from . import aprendizado
+        lista = aprendizado.pendentes()
+        if lista:
+            aprendizado.avisar_com_botoes(lista, telegram.enviar)
+        else:
+            telegram.enviar("💡 Nada pendente: tudo o que aprendi já foi decidido por você.")
+        return True
+    return agendador.propor_natural(texto, telegram.enviar)
 
 
 def _clique_tardio(cb: dict, meu_chat: str) -> None:
