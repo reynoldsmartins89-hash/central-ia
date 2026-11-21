@@ -44,3 +44,9 @@ def carregar(caminho: str) -> Habilidade:
 def listar() -> list[Habilidade]:
     return [carregar(a.parent.relative_to(PASTA_HABILIDADES).as_posix())
             for a in sorted(PASTA_HABILIDADES.rglob("SKILL.md"))]
+
+
+def indice() -> str:
+    """Índice compacto (caminho: descrição), como o <available_skills> do Hermes: a IA vê o catálogo
+    inteiro gastando pouco e só carrega o SKILL.md completo quando precisa."""
+    return "\n".join(f"- {h.caminho}: {h.descricao}" for h in listar())

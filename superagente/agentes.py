@@ -25,6 +25,21 @@ REGRAS_GERAIS = (
 )
 
 
+ARQUIVO_ALMA = RAIZ / "agentes" / "ALMA.md"
+
+
+def alma() -> str:
+    """Identidade comum a todos os agentes (o SOUL.md do Hermes). Passa pela vigilância antes de entrar:
+    se alguém enfiar uma instrução perigosa no arquivo, ele é ignorado."""
+    try:
+        texto = ARQUIVO_ALMA.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    from . import seguranca
+    texto = seguranca.limpar(texto).strip()
+    return "" if seguranca.verificar(texto)[0] == "perigoso" else texto
+
+
 def carregar_env(arquivo: Path = RAIZ / ".env") -> None:
     """Carrega variáveis do .env sem sobrescrever as já definidas no sistema."""
     if not arquivo.exists():
@@ -62,7 +77,8 @@ class Agente:
             if caixa_postal.papel() == "nuvem":   # agente privado: só roda no seu PC, nunca na nuvem
                 raise caixa_postal.PrecisaDoPC(f"o agente {self.nome} é privado (só IA local)")
         hab = habilidades.carregar(self.habilidade)
-        sistema = f"{hab.como_prompt()}\n\n---\n{REGRAS_GERAIS}"
+        identidade = alma()
+        sistema = (f"{identidade}\n\n---\n" if identidade else "") + f"{hab.como_prompt()}\n\n---\n{REGRAS_GERAIS}"
         mensagem = f"## Tarefa\n{tarefa}"
         if self.base:
             from . import conhecimento, leitor

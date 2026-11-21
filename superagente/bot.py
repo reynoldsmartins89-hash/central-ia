@@ -27,6 +27,16 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
 • /nova — começa uma conversa nova (a anterior fica arquivada)
 • /lembrar <fato> — algo que TODOS os agentes devem saber sempre sobre você
 • /memoria — o que está guardado · /esquecer <nº> — apaga um fato
+• /lembrancas <assunto> — o que já conversamos sobre isso, em qualquer conversa antiga
+
+🌱 APRENDER E AGENDAR
+• /aprender — o que a Central aprendeu sozinha (fatos e habilidades novas) para você aprovar
+   /aprender sim <nº|todos> · /aprender nao <nº|todos> · /aprender ver <nº>
+• /agendar <quando> | <pedido> — tarefa que se repete sozinha
+   ex.: /agendar todo dia 07:00 | 3 notícias de geopolítica que importam para o Brasil
+   quando: "em 30m", "a cada 6h", "todo dia 07:00", "seg,qua 08:30", "dias úteis 07:00"
+   /agendar equipe <quando> | <pedido> — a equipe completa trabalha no horário
+• /agenda — tarefas marcadas · /desagendar <nº> — apaga uma
 
 🖐 EXECUTAR NO SEU PC (de qualquer lugar)
 • /pc <ordem> — o Agente Executor faz de verdade: arquivos, pastas, programas,
@@ -170,6 +180,31 @@ def tratar(texto: str) -> None:
     if comando == "/memoria":
         telegram.enviar(memoria.resumo())
         return
+    if comando == "/lembrancas":
+        from . import sessoes
+        if not resto:
+            telegram.enviar("Use: /lembrancas <assunto> — ex.: /lembrancas Oracle")
+            return
+        sessoes.importar()
+        _enviar_longo(sessoes.formatar(sessoes.buscar(resto, limite=8)))
+        return
+    if comando == "/aprender":
+        from . import aprendizado
+        _enviar_longo(aprendizado.comando(resto))
+        return
+    if comando == "/agendar":
+        from . import agendador
+        telegram.enviar(agendador.comando_agendar(resto))
+        return
+    if comando == "/agenda":
+        from . import agendador
+        telegram.enviar(agendador.comando_agenda(resto))
+        return
+    if comando == "/desagendar":
+        from . import agendador
+        ok = resto.isdigit() and agendador.remover(int(resto))
+        telegram.enviar("🗑 Tarefa apagada." if ok else "Use: /desagendar <nº> (veja em /agenda)")
+        return
     if comando == "/esquecer":
         removido = memoria.esquecer(int(resto)) if resto.isdigit() else None
         telegram.enviar(f"🗑 Esqueci: {removido}" if removido else "Use: /esquecer <número> (veja em /memoria)")
@@ -232,7 +267,8 @@ def tratar(texto: str) -> None:
 
 # comandos que dependem do PC (Executor e catálogo dos HDs): na nuvem, ficam guardados para o PC
 SO_NO_PC = {"/pc", "/executar", "/continuar", "/buscar", "/curador", "/duplicados", "/integridade",
-            "/reparos", "/leitura", "/vigia", "/vagas"}
+            "/reparos", "/leitura", "/vigia", "/vagas", "/aprender", "/agendar", "/agenda", "/desagendar",
+            "/lembrancas"}
 
 
 # ------------------------------------------------------------------ modos: conversa, tarefa, ação
@@ -403,7 +439,7 @@ def conversar(texto: str, especialista: bool = True) -> str:
         anterior = memoria.ultima_fala_sua()
         agente = (_escolher_especialista(f"{anterior} {texto}") if especialista
                   else carregar_equipe()[1]["generalista"])
-        contexto = memoria.contexto()
+        contexto = memoria.contexto(consulta=f"{anterior} {texto}")
         tarefa = (f"{VOZ_DA_CONVERSA}\n\n{contexto}\n\n## Mensagem atual do Reynolds\n{texto}\n\n"
                   "Responda à mensagem atual, usando a conversa acima para entender referências.")
         memoria.adicionar("voce", texto)
@@ -414,7 +450,19 @@ def conversar(texto: str, especialista: bool = True) -> str:
     assinatura = "" if agente.nome == "generalista" else f"\n\n— _{NOMES_BONITOS.get(agente.nome, agente.nome)}_"
     nuvem = "☁️ " if caixa_postal.papel() == "nuvem" else ""
     _enviar_longo(f"{nuvem}{resposta}{assinatura}")
+    _aprender("conversa")
     return resposta
+
+
+def _aprender(motivo: str) -> None:
+    """Ciclo de aprendizado em segundo plano (só no PC; na nuvem não há onde aprovar)."""
+    if caixa_postal.papel() == "nuvem":
+        return
+    try:
+        from . import aprendizado
+        aprendizado.talvez_revisar(motivo, avisar=telegram.enviar)
+    except Exception as erro:  # noqa: BLE001
+        print(f"(aprendizado: {erro})")
 
 
 NOMES_BONITOS = {"geopolitica": "Geopolítica", "politica": "Política", "filosofia_catolica": "Filosofia Católica",
@@ -427,7 +475,7 @@ NOMES_BONITOS = {"geopolitica": "Geopolítica", "politica": "Política", "filoso
 
 def _tarefa_em_equipe(sa: Superagente, texto: str) -> None:
     telegram.enviar("🧠 Recebido! O superagente está montando o plano…")
-    contexto = memoria.contexto()
+    contexto = memoria.contexto(consulta=texto)
     memoria.adicionar("voce", texto)
     pasta = sa.executar(texto, historico=contexto)
     try:   # guarda o resultado final na memória, para você poder continuar a conversa sobre ele
@@ -437,6 +485,7 @@ def _tarefa_em_equipe(sa: Superagente, texto: str) -> None:
         memoria.adicionar("central", f"[Resultado da equipe — completo em {pasta}]\n{final}")
     except Exception:  # noqa: BLE001
         pass
+    _aprender("equipe")
 
 
 def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
@@ -464,6 +513,7 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
                                   progresso=telegram.enviar)
     memoria.adicionar("central", f"[Relatório do Executor]\n{relatorio}")
     _enviar_longo(f"📋 RELATÓRIO DO EXECUTOR\n\n{relatorio}")
+    _aprender("executor")
 
 
 # Ordens com até 72 h são atendidas. ATENÇÃO: o próprio Telegram só guarda mensagens de bot por 24 h;
@@ -520,6 +570,13 @@ def rodar() -> None:
     deslocamento = _pendentes_ao_ligar(meu_chat)   # ordens enviadas com o PC desligado (até 24 h)
     print("🟢 Bot rodando. Deixe esta janela aberta (pode minimizar). Ctrl+C para parar.")
     papel = caixa_postal.papel()
+    if papel != "nuvem":   # a agenda mora no PC: a nuvem não roda tarefas (evita rodar duas vezes)
+        from . import agendador, sessoes
+        agendador.em_segundo_plano(telegram.enviar)
+        try:
+            sessoes.importar()   # conversas antigas e resultados entram na lembrança de longo prazo
+        except Exception as erro:  # noqa: BLE001
+            print(f"(lembranças: {erro})")
     ultima_busca = time.time()
     while True:
         try:

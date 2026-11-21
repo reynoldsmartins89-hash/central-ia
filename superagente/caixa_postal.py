@@ -154,7 +154,7 @@ def _scp(origem: str, destino: str, timeout: float = 3600) -> None:
         raise RuntimeError((r.stderr or "falha no scp").strip()[-300:])
 
 
-MEMORIA = ("conversa.json", "perfil.json")
+MEMORIA = ("conversa.json", "perfil.json", "memoria_central.json")
 
 
 def baixar_memoria() -> int:

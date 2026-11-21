@@ -33,6 +33,25 @@ VOCÊ (decide e aprova)
    modelos com reserva automática: gemini → groq → ollama …
 ```
 
+## 🌱 Núcleo de aprendizado (a arquitetura do Hermes, do nosso jeito)
+
+As ideias centrais do Hermes Agent, reescritas como código próprio, sem dependência dele e
+com a regra da casa: **a Central propõe, o Reynolds aprova**.
+
+| Hermes | Central | Onde |
+|---|---|---|
+| `SOUL.md` (identidade) | `agentes/ALMA.md`, entra em todo agente (passa pela vigilância) | `agentes.py` |
+| `MEMORY.md` + `USER.md` com limite | **caderno** (ambiente/combinados) + **perfil**, com limite, sem duplicatas | `memoria.py` |
+| `session_search` (SQLite FTS5) | todas as conversas e resultados pesquisáveis; lembranças entram no pedido | `sessoes.py` · `/lembrancas` |
+| compressão de contexto | o começo da conversa longa vira resumo (Objetivo, Decisões, Pendências…) | `memoria.compactar` |
+| ciclo de aprendizado (cria/corrige skills) | revisor em 2º plano propõe fatos e `SKILL.md`; **só grava com o seu OK** | `aprendizado.py` · `/aprender` |
+| `cronjob` | `/agendar todo dia 07:00 \| pedido`; `[SILENCIO]`; pausa após 3 falhas | `agendador.py` · `/agenda` |
+| varredura de injeção | bloqueia instruções escondidas, vazamento de chaves e comandos destrutivos | `seguranca.py` |
+| índice de skills | `habilidades.indice()`: catálogo compacto para a IA | `habilidades.py` |
+
+Diferenças de confiança em relação ao Hermes: nada é aprendido sem aprovação; tarefa agendada
+nunca aciona o Executor nem publica; tudo fica no PC (`~/.central-ia`), com IAs gratuitas.
+
 ## Estrutura
 
 ```

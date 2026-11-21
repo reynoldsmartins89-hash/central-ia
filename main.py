@@ -207,6 +207,15 @@ def main(argv: list[str] | None = None) -> int:
     c_cur.add_argument("alvo", nargs="?", default="", help="pasta/disco (ou o termo, em 'buscar')")
     c_cur.add_argument("--quantidade", type=int, default=10, help="tamanho do lote (classificar/aplicar)")
 
+    c_ap = sub.add_parser("aprender", help="ciclo de aprendizado: propostas de memória e habilidades para aprovar")
+    c_ap.add_argument("acao", nargs="?", default="", choices=["", "sim", "nao", "ver", "revisar"])
+    c_ap.add_argument("alvo", nargs="?", default="", help="nº da proposta ou 'todos'")
+    c_ag = sub.add_parser("agenda", help="tarefas agendadas (listar | criar | remover | rodar)")
+    c_ag.add_argument("acao", nargs="?", default="listar", choices=["listar", "criar", "remover", "rodar"])
+    c_ag.add_argument("texto", nargs="?", default="", help="criar: '<quando> | <pedido>'; remover: nº")
+    c_lb = sub.add_parser("lembrancas", help="busca em todas as conversas e resultados anteriores")
+    c_lb.add_argument("termo", nargs="?", default="", help="o assunto (vazio = só importa o histórico)")
+
     c = sub.add_parser("perguntar", help="fala direto com um agente")
     c.add_argument("agente")
     c.add_argument("texto")
@@ -229,6 +238,33 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.comando == "telegram":
         return configurar_telegram()
+
+    if a.comando == "aprender":
+        from superagente import aprendizado, memoria
+        if a.acao == "revisar":   # revisa a conversa atual agora, sem esperar o intervalo
+            novas = aprendizado.revisar(memoria.historico(aprendizado.LIMITE_TRECHO), "revisão manual")
+            print(f"{len(novas)} proposta(s) nova(s).")
+        print(aprendizado.comando(f"{a.acao} {a.alvo}".strip() if a.acao != "revisar" else ""))
+        return 0
+
+    if a.comando == "agenda":
+        from superagente import agendador
+        if a.acao == "criar":
+            print(agendador.comando_agendar(a.texto))
+        elif a.acao == "remover":
+            print("Apagada." if a.texto.isdigit() and agendador.remover(int(a.texto)) else "Não encontrada.")
+        elif a.acao == "rodar":   # roda agora as que venceram (o bot faz isso sozinho a cada minuto)
+            print(f"{agendador.tick(enviar=telegram.enviar if telegram.configurado() else print)} tarefa(s) rodada(s).")
+        else:
+            print(agendador.formatar())
+        return 0
+
+    if a.comando == "lembrancas":
+        from superagente import sessoes
+        print(f"{sessoes.importar()} fala(s) nova(s) importada(s) para a lembrança.")
+        if a.termo:
+            print(sessoes.formatar(sessoes.buscar(a.termo, limite=10)))
+        return 0
 
     if a.comando == "grupos":
         from superagente import grupos
