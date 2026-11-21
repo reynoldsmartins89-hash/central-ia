@@ -101,6 +101,34 @@ class TestResgateHD(unittest.TestCase):
         ultimo_bom = max(i for i, p in enumerate(ordem) if p >= 128 * 1024)
         self.assertTrue(any(64 * 1024 <= p < 96 * 1024 for p in ordem[ultimo_bom:]))
 
+    def test_segunda_passada_le_o_menos_lento_antes_do_pior(self):
+        import time as _t
+        kb = 1024
+        dados = bytes(i % 239 for i in range(256 * kb))
+        ordem = []
+        pior, medio = (32 * kb, 96 * kb), (160 * kb, 224 * kb)
+
+        def ler(pos, qtd):
+            ordem.append(pos)
+            if pior[0] <= pos < pior[1]:
+                _t.sleep(0.06)  # lento até para a 1ª rodada da 2ª passada
+            elif medio[0] <= pos < medio[1]:
+                _t.sleep(0.02)  # lento só para a 1ª passada
+            return dados[pos:pos + qtd]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            img = Path(tmp) / "hd.img"
+            mapa = clonar(ler, len(dados), img, bloco=4 * kb, log=lambda _m: None,
+                          salto_min=8 * 4 * kb, salto_max=16 * 4 * kb, lento_s=0.01,
+                          rodadas=(4,))
+            self.assertEqual(img.read_bytes(), dados)  # no fim, nada perdido
+        self.assertEqual(mapa.rodada, 1)
+        self.assertEqual(mapa.pulados + mapa.pulados_prox, [])
+        # a região média terminou de ser lida antes da pior
+        ult_medio = max(i for i, p in enumerate(ordem) if medio[0] <= p < medio[1])
+        ult_pior = max(i for i, p in enumerate(ordem) if pior[0] <= p < pior[1])
+        self.assertLess(ult_medio, ult_pior)
+
     def test_retoma_de_onde_parou(self):
         dados = bytes(range(256)) * 64
         chamadas = {"n": 0}

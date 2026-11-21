@@ -138,6 +138,33 @@ class TestHistoricoIAs(unittest.TestCase):
             self.assertEqual(total["criadas"], 0)
             self.assertEqual(nota.read_text(encoding="utf-8"), "minha edição no Obsidian")
 
+    def test_export_novo_do_claude_traz_projetos_e_artefatos(self):
+        projeto = {"uuid": "p1", "name": "Renda online", "description": "Gerar renda", "is_private": True,
+                   "prompt_template": "Seja direto", "created_at": "2026-09-01T10:00:00Z",
+                   "docs": [{"filename": "plano.md", "content": "Passo 1"}]}
+        artefato = {"id": "a1", "kind": "page", "active_version": "v2", "versions": [
+            {"id": "v2", "title": "Guia de carreira", "created_at": "2026-11-07T12:00:00+00:00"},
+            {"id": "v1", "title": "Guia de carreira", "created_at": "2026-11-05T01:00:00+00:00"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "projects").mkdir()
+            (tmp / "projects" / "p1.json").write_text(json.dumps(projeto), encoding="utf-8")
+            pasta = tmp / "frames" / "artifacts" / "a1"
+            pasta.mkdir(parents=True)
+            (pasta / "artifact.json").write_text(json.dumps(artefato), encoding="utf-8")
+            (pasta / "page.md").write_text("Texto do guia", encoding="utf-8")
+            (pasta / "comments.json").write_text("[]", encoding="utf-8")
+            raiz = tmp / "cofre"
+            total = historico_ias.importar([tmp], raiz=raiz, log=lambda *_: None)
+            self.assertEqual(total["criadas"], 2)
+            proj = (raiz / "Claude" / "Projetos" / "2026-09-01 - Renda online.md").read_text(encoding="utf-8")
+            for trecho in ("Gerar renda", "Seja direto", "plano.md", "Passo 1"):
+                self.assertIn(trecho, proj)
+            art = (raiz / "Claude" / "Artefatos" / "2026-11-05 - Guia de carreira.md").read_text(encoding="utf-8")
+            self.assertIn("Texto do guia", art)
+            self.assertIn("[[Claude/Projetos/2026-09-01 - Renda online|", (raiz / "Histórico das IAs.md").read_text(encoding="utf-8"))
+            self.assertEqual(historico_ias.importar([tmp], raiz=raiz, log=lambda *_: None)["criadas"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

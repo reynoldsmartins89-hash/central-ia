@@ -8,7 +8,8 @@ Uso:
 
 Formatos reconhecidos (pelo CONTEÚDO, não pelo nome):
   • conversations.json do ChatGPT (export oficial)
-  • conversations.json do Claude (export oficial: lista com "chat_messages")
+  • conversations.json do Claude (export oficial: lista com "chat_messages"); do export novo, em partes,
+    também projects/<uuid>.json (→ Claude/Projetos) e frames/artifacts/<id>/artifact.json (→ Claude/Artefatos)
   • qualquer documento (.docx, .pdf, .html, .txt, .md) → uma nota com o texto inteiro;
     a IA é deduzida do nome do arquivo/pasta só para escolher a subpasta.
 """
@@ -234,8 +235,52 @@ def _nome_arquivo(data: str, titulo: str, usados: set[str]) -> str:
     return nome + ".md"
 
 
+def importar_projeto_claude(arquivo: Path, p: dict, raiz: Path, log=print) -> dict:
+    """Export novo do Claude (projects/<uuid>.json): descrição, instruções e documentos do projeto."""
+    titulo, data = p.get("name") or "Projeto sem nome", _data(p.get("created_at"))
+    partes = [f"_Projeto do Claude · criado em {data} · {len(p.get('docs') or [])} documento(s)_"]
+    if (p.get("description") or "").strip():
+        partes += ["## Descrição", p["description"].strip()]
+    if (p.get("prompt_template") or "").strip():
+        partes += ["## Instruções do projeto", p["prompt_template"].strip()]
+    for doc in p.get("docs") or []:
+        partes += [f"## Documento: {doc.get('filename') or 'sem nome'}", (doc.get("content") or "").strip()]
+    nome = f"{data} - {obsidian._nome_seguro(titulo, 80) or 'Projeto'}.md"
+    criou = _nota(raiz / "Claude" / "Projetos" / nome, titulo, data, "Claude", arquivo, "\n\n".join(partes))
+    log(f"   Claude (projeto): {titulo} → {'nota criada' if criou else 'já existia'}")
+    return {"criadas": int(criou), "existentes": int(not criou), "vazias": 0}
+
+
+def importar_artefato_claude(arquivo: Path, a: dict, raiz: Path, log=print) -> dict:
+    """Export novo do Claude (frames/artifacts/<id>/artifact.json): artefatos e páginas, com as versões."""
+    versoes = sorted(a.get("versions") or [], key=lambda v: v.get("created_at") or "")
+    if not versoes:
+        return {"criadas": 0, "existentes": 0, "vazias": 1}
+    titulo = versoes[-1].get("title") or "Artefato sem nome"
+    data = _data(versoes[0].get("created_at"))
+    pasta = arquivo.parent
+    partes = [f"_{'Página' if a.get('kind') == 'page' else 'Artefato'} do Claude · {len(versoes)} versão(ões)_",
+              "## Versões"]
+    for v in versoes:
+        arq = pasta / "versions" / f"{v.get('id')}.html"
+        desc = (v.get("description") or "").strip()
+        partes.append(f"- {_data(v.get('created_at'))}: {desc if a.get('kind') != 'page' else v.get('title')}"
+                      + (f" (arquivo `{arq}`)" if arq.exists() else ""))
+    pagina = pasta / "page.md"
+    if pagina.exists():
+        partes += ["## Conteúdo", pagina.read_text(encoding="utf-8").strip()]
+    nome = f"{data} - {obsidian._nome_seguro(titulo, 80) or 'Artefato'}.md"
+    criou = _nota(raiz / "Claude" / "Artefatos" / nome, titulo, data, "Claude", arquivo, "\n\n".join(partes))
+    log(f"   Claude (artefato): {titulo} → {'nota criada' if criou else 'já existia'}")
+    return {"criadas": int(criou), "existentes": int(not criou), "vazias": 0}
+
+
 def importar_export(arquivo: Path, raiz: Path, log=print) -> dict:
     dados = json.loads(arquivo.read_text(encoding="utf-8"))
+    if isinstance(dados, dict) and "prompt_template" in dados and "docs" in dados:
+        return importar_projeto_claude(arquivo, dados, raiz, log)
+    if isinstance(dados, dict) and dados.get("kind") in ("artifact", "page") and "versions" in dados:
+        return importar_artefato_claude(arquivo, dados, raiz, log)
     if isinstance(dados, dict) and "messages" in dados:
         dados = [dados]                        # DeepSeek: um arquivo por conversa
     elif isinstance(dados, dict) and isinstance(dados.get("data"), list):
@@ -284,6 +329,11 @@ def _indice(raiz: Path) -> None:
     for pasta in sorted(p for p in raiz.iterdir() if p.is_dir()):
         notas = sorted(pasta.glob("*.md"))
         linhas += [f"## {pasta.name} ({len(notas)})", ""] + [f"- [[{pasta.name}/{n.stem}|{n.stem}]]" for n in notas] + [""]
+        for sub in (pasta / "Projetos", pasta / "Artefatos"):
+            sub_notas = sorted(sub.glob("*.md")) if sub.is_dir() else []
+            if sub_notas:
+                linhas += [f"### {pasta.name} · {sub.name} ({len(sub_notas)})", ""] + [
+                    f"- [[{pasta.name}/{sub.name}/{n.stem}|{n.stem}]]" for n in sub_notas] + [""]
     (raiz / "Histórico das IAs.md").write_text("\n".join(linhas), encoding="utf-8")
 
 

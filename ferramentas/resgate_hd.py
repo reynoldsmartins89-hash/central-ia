@@ -153,13 +153,14 @@ def teste_leitura(numero: int, tamanho: int, pontos: int = 9) -> list[dict]:
 SALTO_MIN = 64 * MiB        # ao achar área ruim ou lenta, pula isso para frente…
 SALTO_MAX = 4 * 1024 * MiB  # …dobrando a cada problema seguido, até este limite
 LENTO_S = 2.0               # 1 MiB levando mais que isso = disco sofrendo: pula (1ª passada)
+RODADAS = (4, 16)           # 2ª passada: rodadas tolerando 4× e 16× mais lentidão; depois, sem limite
 
 
 class Mapa:
     """Progresso da cópia, salvo em disco para poder pausar e retomar."""
 
     CAMPOS = {"posicao": 0, "blocos_ruins": [], "pulados": [],
-              "setores_ruins": [], "passada3_feita": []}
+              "setores_ruins": [], "passada3_feita": [], "pulados_prox": [], "rodada": 0}
 
     def __init__(self, caminho: Path, tamanho: int):
         self.caminho = caminho
@@ -170,6 +171,8 @@ class Mapa:
         # posicao: até onde a 1ª passada foi | blocos_ruins: blocos de 1 MiB que falharam
         # pulados: fila de faixas puladas, lidas na 2ª passada (que pode pular de novo
         #          e devolver o resto ao fim da fila — nada é abandonado)
+        # pulados_prox / rodada: na 2ª passada, o que ainda for lento demais vai para a
+        #          rodada seguinte (mais tolerante); a última rodada lê tudo, sem limite
         # setores_ruins: setores ilegíveis na 3ª passada (setor a setor)
         for campo, padrao in self.CAMPOS.items():
             setattr(self, campo, d.get(campo, type(padrao)(padrao)))
@@ -188,15 +191,18 @@ def clonar(ler: Callable[[int, int], bytes], tamanho: int, destino: Path,
            bloco: int = BLOCO, setor: int = SETOR, salvar_a_cada: int = 64,
            log: Callable[[str], None] = print, salto_min: int = SALTO_MIN,
            salto_max: int = SALTO_MAX, desistir_setores: int = 8,
-           areas: list[tuple[int, int]] | None = None, lento_s: float | None = LENTO_S) -> Mapa:
+           areas: list[tuple[int, int]] | None = None, lento_s: float | None = LENTO_S,
+           rodadas: tuple[float, ...] = RODADAS) -> Mapa:
     """Copia `tamanho` bytes usando `ler(posicao, quantidade)` para `destino`.
 
     Estratégia (a mesma dos programas profissionais): salvar primeiro o que é
     fácil, deixando as áreas ruins para o fim — insistir nelas é o que mata HD fraco.
     1ª passada: blocos de 1 MiB; ao falhar ou ler devagar demais, pula para frente
     (64 MiB, 128, 256… até 4 GiB). Região fraca de disco = leituras lentas antes dos erros.
-    2ª passada: lê as faixas puladas; se achar área ruim, pula de novo e põe o
-    resto no fim da fila (cada volta consome ao menos 1 bloco, então termina).
+    2ª passada: lê as faixas puladas em rodadas — primeiro tolerando um pouco mais de
+    lentidão (`rodadas` × lento_s), deixando o pior para a rodada seguinte; a última
+    rodada não tem limite e, se achar área ruim, pula e põe o resto no fim da fila
+    (cada volta consome ao menos 1 bloco, então termina).
     3ª passada: blocos que falharam são relidos setor a setor.
     O que continuar ilegível fica zerado na imagem e anotado no mapa.
     `areas`: se dado, copia só essas faixas (ex.: só o espaço ocupado por arquivos).
@@ -261,6 +267,11 @@ def clonar(ler: Callable[[int, int], bytes], tamanho: int, destino: Path,
                         log(f"  1ª passada: {pos * 100 / tamanho:5.1f}%  "
                             f"({tamanho_legivel(pos / dec if dec else 0)}/s no total, "
                             f"{len(mapa.blocos_ruins)} blocos ruins)")
+                    else:
+                        falta = sum(f - i for i, f in mapa.pulados + mapa.pulados_prox)
+                        log(f"  {rotulo} (rodada {mapa.rodada + 1}): em "
+                            f"{tamanho_legivel(pos)}, faltam {tamanho_legivel(falta)}, "
+                            f"{len(mapa.blocos_ruins)} blocos ruins")
 
         # ---- 1ª passada
         for ini, fim in (areas or [(0, tamanho)]):
@@ -271,13 +282,22 @@ def clonar(ler: Callable[[int, int], bytes], tamanho: int, destino: Path,
         mapa.posicao = tamanho
         mapa.salvar()
         # ---- 2ª passada: faixas puladas
-        if mapa.pulados:
-            total = sum(f - i for i, f in mapa.pulados)
+        if mapa.pulados or mapa.pulados_prox:
+            total = sum(f - i for i, f in mapa.pulados + mapa.pulados_prox)
             log(f"2ª passada: lendo {tamanho_legivel(total)} que foram pulados…")
-        while mapa.pulados:
+        while mapa.pulados or mapa.pulados_prox:
+            if not mapa.pulados:  # rodada acabou: a próxima tolera mais lentidão
+                mapa.pulados, mapa.pulados_prox = mapa.pulados_prox, []
+                mapa.rodada += 1
+                mapa.salvar()
+                log(f"2ª passada, rodada {mapa.rodada + 1}: "
+                    f"{tamanho_legivel(sum(f - i for i, f in mapa.pulados))} mais difíceis…")
+            ultima = lento_s is None or mapa.rodada >= len(rodadas)
+            lento = None if ultima else lento_s * rodadas[mapa.rodada]
             faixa = mapa.pulados[0]
             varrer(faixa[0], faixa[1], lambda p: faixa.__setitem__(0, p),
-                   mapa.pulados.append, "2ª passada")
+                   mapa.pulados.append if ultima else mapa.pulados_prox.append,
+                   "2ª passada", lento)
             mapa.pulados.pop(0)
             mapa.salvar()
         # ---- 3ª passada: setor a setor nos blocos que falharam
