@@ -150,7 +150,8 @@ def _cli(ferramenta: str, sistema: str, mensagem: str) -> str:
         raise ErroProvedor(f"{nome} não está instalado")
     PASTA_CLI.mkdir(parents=True, exist_ok=True)
     prompt = f"{sistema}\n\n---\n\n{mensagem}\n\nResponda apenas com o conteúdo pedido, sem usar ferramentas nem criar arquivos."
-    saida_codex = PASTA_CLI / "codex_resposta.txt"
+    import uuid
+    saida_codex = PASTA_CLI / f"codex_resposta_{uuid.uuid4().hex[:10]}.txt"   # um por chamada: roda em paralelo
     if nome == "claude":
         comando = [executavel, "-p", "--output-format", "text"] + (["--model", modelo] if modelo else [])
     elif nome == "codex":
@@ -178,6 +179,7 @@ def _cli(ferramenta: str, sistema: str, mensagem: str) -> str:
         raise ErroProvedor(f"{nome} não respondeu em {TIMEOUT_CLI:.0f}s (precisa de login?)") from erro
     r = subprocess.CompletedProcess(comando, processo.returncode, saida, erros)
     texto = saida_codex.read_text(encoding="utf-8") if nome == "codex" and saida_codex.exists() else r.stdout
+    saida_codex.unlink(missing_ok=True)
     if r.returncode != 0 or not texto.strip():
         detalhe = (r.stderr or r.stdout or "").strip().splitlines()[-3:]
         raise ErroProvedor(f"{nome} falhou (está logado?): {' | '.join(detalhe)[:250]}")
@@ -210,11 +212,60 @@ def chamar(especificacao: str, sistema: str, mensagem: str) -> str:
     raise ErroProvedor(f"provedor desconhecido: {provedor}")
 
 
+# ------------------------------------------------------------------ descanso das assinaturas
+# Quando uma assinatura bate no limite (ou o serviço está fora), ela "descansa" um tempo e as
+# próximas chamadas vão direto para a seguinte da lista, sem esperar minutos por uma falha certa.
+# O arquivo é compartilhado entre o bot, a agenda e o terminal.
+ARQUIVO_DESCANSO = Path.home() / ".central-ia" / "descanso.json"
+DESCANSO_LIMITE = 45 * 60      # bateu na cota
+DESCANSO_FALHA = 10 * 60       # serviço fora do ar / sem resposta
+PISTAS_DE_COTA = ("limit", "quota", "rate", "usage", "429", "exceeded", "too many", "esgot")
+
+
+def _chave_descanso(especificacao: str) -> str:
+    provedor, _, modelo = especificacao.partition(":")
+    return f"cli:{modelo.split('/')[0]}" if provedor == "cli" else especificacao
+
+
+def _descansos() -> dict:
+    try:
+        import json
+        dados = json.loads(ARQUIVO_DESCANSO.read_text(encoding="utf-8"))
+        return {k: v for k, v in dados.items() if v > time.time()}
+    except (OSError, ValueError):
+        return {}
+
+
+def descansando(especificacao: str) -> bool:
+    return _chave_descanso(especificacao) in _descansos()
+
+
+def por_para_descansar(especificacao: str, erro: str) -> int:
+    """Marca a assinatura como em descanso. Só vale para ferramentas de terminal (cli:)."""
+    if not especificacao.startswith("cli:"):
+        return 0
+    import json
+    segundos = DESCANSO_LIMITE if any(p in erro.lower() for p in PISTAS_DE_COTA) else DESCANSO_FALHA
+    dados = _descansos()
+    dados[_chave_descanso(especificacao)] = time.time() + segundos
+    try:
+        ARQUIVO_DESCANSO.parent.mkdir(parents=True, exist_ok=True)
+        ARQUIVO_DESCANSO.write_text(json.dumps(dados), encoding="utf-8")
+    except OSError:
+        pass
+    return segundos
+
+
 def chamar_com_reserva(modelos: list[str], sistema: str, mensagem: str,
                        log=print) -> tuple[str, str]:
-    """Tenta cada modelo em ordem. Retorna (modelo_usado, resposta)."""
+    """Tenta cada modelo em ordem. Retorna (modelo_usado, resposta).
+    Pula as assinaturas em descanso e, dentro do servidor MCP (CENTRAL_SEM_CLI), as de terminal."""
     erros = []
-    for especificacao in modelos:
+    sem_cli = os.getenv("CENTRAL_SEM_CLI", "").strip() == "1"
+    candidatos = [m for m in modelos if not (sem_cli and m.startswith("cli:")) and not descansando(m)]
+    if not candidatos:   # tudo descansando: tenta assim mesmo, na ordem original
+        candidatos = list(modelos)
+    for especificacao in candidatos:
         try:
             resposta = chamar(especificacao, sistema, mensagem)
             if resposta.strip():
@@ -222,7 +273,9 @@ def chamar_com_reserva(modelos: list[str], sistema: str, mensagem: str,
             erros.append(f"{especificacao}: resposta vazia")
         except ErroProvedor as erro:
             erros.append(f"{especificacao}: {erro}")
-            log(f"   ↪ {especificacao} indisponível ({str(erro)[:90]}); tentando o próximo…")
+            pausa = por_para_descansar(especificacao, str(erro))
+            log(f"   ↪ {especificacao} indisponível ({str(erro)[:90]}); tentando o próximo…"
+                + (f" (descansa {pausa // 60} min)" if pausa else ""))
     raise ErroProvedor("nenhum modelo respondeu:\n  - " + "\n  - ".join(erros))
 
 

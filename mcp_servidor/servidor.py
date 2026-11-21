@@ -9,6 +9,7 @@ Registrar no Claude Code (rode na pasta do repositório):
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -54,5 +55,48 @@ def executar_fluxo(nome: str, entrada: str) -> str:
     return str(Superagente(log=_log).fluxo(nome, entrada))
 
 
+@mcp.tool()
+def buscar_no_acervo(pergunta: str, quantos: int = 8) -> str:
+    """Busca no acervo pessoal do Reynolds (Drive e HDs lidos pelo Agente Leitor): livros, cursos, transcrições."""
+    from superagente import conhecimento, leitor
+    achados = leitor.buscar(pergunta, limite=max(1, min(quantos, 20)))
+    return conhecimento.como_contexto(achados) if achados else "Nada encontrado no acervo."
+
+
+@mcp.tool()
+def lembrar_conversas(assunto: str, quantos: int = 8) -> str:
+    """O que o Reynolds e a Central já conversaram ou produziram sobre um assunto (todas as conversas antigas)."""
+    from superagente import sessoes
+    return sessoes.formatar(sessoes.buscar(assunto, limite=max(1, min(quantos, 20))))
+
+
+@mcp.tool()
+def memoria_da_central() -> str:
+    """O perfil do Reynolds e o caderno da Central (fatos duráveis e combinados). Leia antes de trabalhar."""
+    from superagente import memoria
+    partes = ["## Perfil do Reynolds", *(f"- {f}" for f in memoria.fatos()),
+              "", "## Caderno da Central", *(f"- {f}" for f in memoria.caderno())]
+    alma = Path(__file__).resolve().parent.parent / "agentes" / "ALMA.md"
+    if alma.exists():
+        partes = [alma.read_text(encoding="utf-8"), ""] + partes
+    return "\n".join(partes)
+
+
+@mcp.tool()
+def listar_habilidades() -> str:
+    """Catálogo compacto das habilidades (caminho: descrição). Use ler_habilidade para abrir uma."""
+    return habilidades.indice()
+
+
+@mcp.tool()
+def ver_agenda() -> str:
+    """Tarefas agendadas da Central (só leitura)."""
+    from superagente import agendador
+    return agendador.formatar()
+
+
 if __name__ == "__main__":
+    # Quem chama este servidor já é uma IA de assinatura (Codex, Claude Code…): os agentes daqui
+    # usam as APIs, sem abrir outra ferramenta de terminal por dentro (evita IA chamando IA em cascata).
+    os.environ.setdefault("CENTRAL_SEM_CLI", "1")
     mcp.run()

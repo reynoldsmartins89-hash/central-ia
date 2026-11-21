@@ -9,6 +9,19 @@
 #             qwen, zai, perplexity, openrouter, eco (teste offline)
 # A ordem abaixo prioriza custo adicional ZERO: Ollama local, Gemini e Groq gratuitos.
 
+# As SUAS assinaturas na frente de todos os agentes (menos os privados, que só usam IA local).
+#  • frente: tentadas primeiro, nesta ordem. O Codex (ChatGPT Plus) é o trabalhador principal.
+#  • por_ultimo: vão para o fim da lista. O Claude fica de reserva, para sobrar cota para as
+#    conversas do Reynolds com ele (ideias, arquitetura).
+# Se uma assinatura bater no limite, ela descansa e as gratuitas assumem sozinhas.
+[assinaturas]
+ativo = true
+frente = ["cli:codex"]
+por_ultimo = ["cli:claude"]
+# Agentes que mantêm a própria ordem: o revisor usa o Claude primeiro (revisão e escrita fina,
+# respostas curtas, pouca cota). O Codex entra como reserva dele.
+manter_ordem = ["revisor"]
+
 [superagente]
 habilidade = "geral/superagente"
 modelos = ["gemini:gemini-3.5-flash", "gemini:gemini-flash-lite-latest", "groq:openai/gpt-oss-120b", "ollama:qwen3:4b"]

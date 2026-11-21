@@ -49,6 +49,16 @@ com a regra da casa: **a Central propõe, o Reynolds aprova**.
 | varredura de injeção | bloqueia instruções escondidas, vazamento de chaves e comandos destrutivos | `seguranca.py` |
 | índice de skills | `habilidades.indice()`: catálogo compacto para a IA | `habilidades.py` |
 
+### Assinaturas, paralelo e MCP
+- **Assinaturas na frente** (`[assinaturas]` em `agentes/agentes.toml`): o Codex (ChatGPT Plus) é o
+  trabalhador principal; o revisor usa o Claude; as IAs gratuitas são reserva. Assinatura que bate no
+  limite "descansa" (`~/.central-ia/descanso.json`) e as outras assumem sem esperar.
+- **Paralelo**: cada etapa diz de quais depende (`depende = [1, 2]`); as independentes rodam juntas
+  (até `CENTRAL_PARALELO`, padrão 3). O planejador já devolve as dependências.
+- **MCP**: o servidor `mcp_servidor/servidor.py` está registrado no Codex e no Claude Code. Eles enxergam
+  agentes, habilidades, acervo, lembranças, memória e agenda. As ferramentas de leitura rodam sem pedir
+  aprovação no Codex; `perguntar_agente` e `executar_fluxo` pedem.
+
 Diferenças de confiança em relação ao Hermes: nada é aprendido sem aprovação; tarefa agendada
 nunca aciona o Executor nem publica; tudo fica no PC (`~/.central-ia`), com IAs gratuitas.
 

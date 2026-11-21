@@ -8,8 +8,10 @@ Todo resultado é salvo em resultados/<data>-<assunto>/ para você revisar e apr
 from __future__ import annotations
 
 import json
+import os
 import re
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +53,31 @@ PASTA_RESULTADOS = RAIZ / "resultados"
 LIMITE_CONTEXTO = 30_000   # caracteres de resultados anteriores repassados a cada etapa
 LIMITE_SINTESE = 60_000    # a síntese final enxerga mais
 MINIMO_PARA_SINTESE = 4    # a partir de quantos agentes o superagente consolida tudo no final
+PARALELO_MAX = int(os.getenv("CENTRAL_PARALELO", "3"))   # etapas independentes rodando ao mesmo tempo
+
+
+def dependencias(plano: list[dict]) -> list[list[int]]:
+    """De quais etapas (1, 2, 3…) cada etapa precisa. Sem 'depende' = todas as anteriores (em série)."""
+    saida = []
+    for i, etapa in enumerate(plano, 1):
+        d = etapa.get("depende")
+        if not isinstance(d, list):
+            saida.append(list(range(1, i)))
+            continue
+        saida.append(sorted({int(x) for x in d if str(x).strip().isdigit() and 1 <= int(x) < i}))
+    return saida
+
+
+def ondas(plano: list[dict]) -> list[list[int]]:
+    """Agrupa as etapas em ondas: dentro de uma onda, ninguém depende de ninguém (rodam juntas)."""
+    deps, feitas, resultado = dependencias(plano), set(), []
+    pendentes = list(range(1, len(plano) + 1))
+    while pendentes:
+        onda = [i for i in pendentes if set(deps[i - 1]) <= feitas]
+        resultado.append(onda)
+        feitas.update(onda)
+        pendentes = [i for i in pendentes if i not in feitas]
+    return resultado
 
 
 def montar_contexto(entrada: str, resultados: list[tuple[str, str]], limite: int = LIMITE_CONTEXTO) -> str:
@@ -136,10 +163,15 @@ class Superagente:
             "4. O TAMANHO da equipe depende do pedido: perguntas simples pedem 1–2 agentes; trabalhos amplos ou "
             "interdisciplinares podem usar 5, 8 ou até 12 etapas, envolvendo vários especialistas. "
             "Não economize especialistas quando o tema cruza áreas; não inclua agentes que não acrescentam nada.\n"
-            "5. Aponte até 4 agentes que ficaram de fora mas poderiam enriquecer o resultado, com o motivo.\n\n"
+            "5. Aponte até 4 agentes que ficaram de fora mas poderiam enriquecer o resultado, com o motivo.\n"
+            "6. Em 'depende', liste os números das etapas (1, 2, 3…) cujo resultado aquela etapa PRECISA ler. "
+            "Etapas que não dependem umas das outras rodam AO MESMO TEMPO, então não ponha dependência à toa; "
+            "[] = só precisa do pedido. Ex.: dois especialistas pesquisando ângulos diferentes = [] e []; "
+            "o redator que junta os dois = [1, 2]; o revisor do texto = [3].\n\n"
             "Responda SOMENTE com JSON no formato:\n"
             '{"resumo": "<em 1-2 frases: que equipe você montou e por quê>",\n'
-            ' "plano": [{"agente": "<nome>", "tarefa": "<instrução específica>", "porque": "<motivo em uma frase>"}],\n'
+            ' "plano": [{"agente": "<nome>", "tarefa": "<instrução específica>", "porque": "<motivo em uma frase>",'
+            ' "depende": [<números das etapas anteriores>]}],\n'
             ' "tambem_poderiam_ajudar": [{"agente": "<nome>", "porque": "<o que acrescentaria>"}]}'
         )
         try:
@@ -153,9 +185,13 @@ class Superagente:
                 lista = dados.get("plano") or next((v for v in dados.values() if isinstance(v, list)), [])
             else:
                 lista = dados
+            validas = [p for p in lista if isinstance(p, dict) and p.get("agente") in self.equipe]
+            # se o modelo descartou etapas inválidas, os números de 'depende' não batem mais: aí roda em série
+            confiar = len(validas) == len([p for p in lista if isinstance(p, dict)])
             plano = Plano({"agente": p["agente"], "tarefa": str(p.get("tarefa") or objetivo),
-                           "porque": str(p.get("porque") or "")}
-                          for p in lista if isinstance(p, dict) and p.get("agente") in self.equipe)
+                           "porque": str(p.get("porque") or ""),
+                           **({"depende": p["depende"]} if confiar and isinstance(p.get("depende"), list) else {})}
+                          for p in validas)
             if plano:
                 plano.resumo = resumo
                 plano.sugestoes = [e for e in extras if e["agente"] not in {p["agente"] for p in plano}]
@@ -181,14 +217,18 @@ class Superagente:
         registro = {"titulo": titulo, "entrada": entrada, "resumo_equipe": getattr(plano, "resumo", ""),
                     "etapas": []}
         resultados: list[tuple[str, str]] = []
+        deps = dependencias(plano)
+        feitos: dict[int, tuple[str, str, Path]] = {}   # nº da etapa → (modelo, resposta, arquivo)
 
-        for i, etapa in enumerate(plano, 1):
+        def rodar_etapa(i: int) -> tuple[str, str, Path]:
+            etapa = plano[i - 1]
             agente: Agente = self.equipe[etapa["agente"]]
             self.log(f"\n▶ Etapa {i}/{len(plano)} — {agente.nome}")
             if self.ao_vivo:
                 telegram.enviar(f"▶ Etapa {i}/{len(plano)} — {agente.nome} trabalhando…")
+            anteriores = [(plano[j - 1]["agente"], feitos[j][1]) for j in deps[i - 1]]
             modelo, resposta = agente.executar(
-                etapa["tarefa"], montar_contexto(entrada, resultados), self.modelos_forcados, log=self.log)
+                etapa["tarefa"], montar_contexto(entrada, anteriores), self.modelos_forcados, log=self.log)
             self.log(f"   ✔ concluída com {modelo}")
             if self.ao_vivo:
                 telegram.enviar(f"✔ {agente.nome} concluiu usando {modelo}")
@@ -206,7 +246,24 @@ class Superagente:
                 if self.ao_vivo:
                     for lamina in laminas:
                         telegram.enviar_arquivo(lamina, f"Carrossel — {lamina.stem}")
-            resultados.append((agente.nome, resposta))
+            return modelo, resposta, arquivo
+
+        for onda in ondas(plano):
+            if len(onda) == 1:
+                feitos[onda[0]] = rodar_etapa(onda[0])
+                continue
+            nomes = ", ".join(f"{i}. {plano[i - 1]['agente']}" for i in onda)
+            self.log(f"\n⚡ Em paralelo: {nomes}")
+            if self.ao_vivo:
+                telegram.enviar(f"⚡ {len(onda)} etapas ao mesmo tempo: {nomes}")
+            with ThreadPoolExecutor(max_workers=max(1, min(PARALELO_MAX, len(onda)))) as grupo:
+                futuros = {i: grupo.submit(rodar_etapa, i) for i in onda}
+                for i, futuro in futuros.items():
+                    feitos[i] = futuro.result()   # erro numa etapa interrompe o plano, como antes
+
+        for i, etapa in enumerate(plano, 1):
+            modelo, resposta, arquivo = feitos[i]
+            resultados.append((etapa["agente"], resposta))
             registro["etapas"].append({**etapa, "modelo": modelo, "arquivo": arquivo.name})
 
         if len(plano) >= MINIMO_PARA_SINTESE:  # equipe grande: o superagente integra tudo num material só
@@ -265,7 +322,8 @@ class Superagente:
         arquivo = PASTA_FLUXOS / f"{nome}.toml"
         with open(arquivo, "rb") as f:
             dados = tomllib.load(f)
-        plano = [{"agente": e["agente"], "tarefa": e["tarefa"]} for e in dados["etapas"]]
+        plano = [{"agente": e["agente"], "tarefa": e["tarefa"],
+                  **({"depende": e["depende"]} if "depende" in e else {})} for e in dados["etapas"]]
         desconhecidos = [p["agente"] for p in plano if p["agente"] not in self.equipe]
         if desconhecidos:
             raise ValueError(f"agentes inexistentes no fluxo {nome}: {desconhecidos}")

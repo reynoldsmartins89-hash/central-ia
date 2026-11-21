@@ -421,7 +421,7 @@ def _enviar_longo(texto: str) -> None:
 # O que importa é a DENSIDADE da resposta, não a velocidade: no PC, o Claude (sua assinatura);
 # na nuvem (sem Claude), o Gemini. Os demais ficam de reserva.
 MODELOS_DA_CONVERSA = [m.strip() for m in os.getenv(
-    "MODELOS_DA_CONVERSA", "cli:claude,gemini:gemini-3.5-flash").split(",") if m.strip()]
+    "MODELOS_DA_CONVERSA", "cli:codex,gemini:gemini-3.5-flash,cli:claude").split(",") if m.strip()]
 
 
 VOZ_DA_CONVERSA = """Você está numa CONVERSA de chat (Telegram) com o Reynolds — como o ChatGPT, o Claude ou o

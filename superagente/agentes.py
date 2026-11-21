@@ -51,6 +51,38 @@ def carregar_env(arquivo: Path = RAIZ / ".env") -> None:
             os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
 
 
+def _config_assinaturas(arquivo: Path = ARQUIVO_AGENTES) -> dict:
+    try:
+        with open(arquivo, "rb") as f:
+            return tomllib.load(f).get("assinaturas", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def ordenar_assinaturas(lista: list[str], config: dict | None = None, agente: str = "") -> list[str]:
+    """Põe as assinaturas da `frente` primeiro e as de `por_ultimo` no fim (ex.: Codex → … → Claude).
+    Agentes em `manter_ordem` (ex.: o revisor, com o Claude) usam a própria lista, com a frente logo depois."""
+    config = _config_assinaturas() if config is None else config
+    if not config.get("ativo"):
+        return list(lista)
+    if agente and agente in config.get("manter_ordem", []):
+        primeiro = lista[:1]
+        return primeiro + [m for m in config.get("frente", []) if m not in primeiro] + \
+            [m for m in lista[1:] if m not in config.get("frente", [])]
+    frente = [m for m in config.get("frente", []) if m]
+    ultimos = tuple(m for m in config.get("por_ultimo", []) if m)
+
+    def no_fim(m: str) -> bool:
+        return any(m == u or m.startswith(u + "/") for u in ultimos)
+
+    def na_frente(m: str) -> bool:
+        return any(m == f or m.startswith(f + "/") for f in frente)
+
+    meio = [m for m in lista if not na_frente(m) and not no_fim(m)]
+    fim = [m for m in lista if no_fim(m)]
+    return frente + meio + fim
+
+
 @dataclass
 class Agente:
     nome: str
@@ -62,7 +94,7 @@ class Agente:
     acervo: bool = False        # consulta o acervo inteiro lido pelo Agente Leitor (Drive + HDs)
 
     def modelos_permitidos(self, modelos: list[str] | None = None) -> list[str]:
-        lista = modelos or self.modelos
+        lista = modelos or ordenar_assinaturas(self.modelos, agente=self.nome)
         if self.privacidade == "local":
             lista = [m for m in lista if m.split(":", 1)[0] in ("ollama", "eco")] or ["ollama:qwen3:4b"]
         return lista

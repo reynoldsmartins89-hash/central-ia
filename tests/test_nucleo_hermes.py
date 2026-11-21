@@ -294,3 +294,44 @@ class TestAgenda(ComPastaTemporaria):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAssinaturasEParalelo(unittest.TestCase):
+    def test_codex_na_frente_e_claude_no_fim(self):
+        from superagente.agentes import ordenar_assinaturas
+        cfg = {"ativo": True, "frente": ["cli:codex"], "por_ultimo": ["cli:claude"]}
+        lista = ["cli:claude/sonnet", "gemini:gemini-3.5-flash", "cli:codex", "groq:x"]
+        self.assertEqual(ordenar_assinaturas(lista, cfg),
+                         ["cli:codex", "gemini:gemini-3.5-flash", "groq:x", "cli:claude/sonnet"])
+        self.assertEqual(ordenar_assinaturas(lista, {"ativo": False}), lista)
+        cfg["manter_ordem"] = ["revisor"]
+        self.assertEqual(ordenar_assinaturas(["cli:claude", "gemini:g"], cfg, agente="revisor"),
+                         ["cli:claude", "cli:codex", "gemini:g"])
+
+    def test_ondas_respeitam_dependencias(self):
+        from superagente.orquestrador import ondas
+        plano = [{"agente": "a"}, {"agente": "b", "depende": []}, {"agente": "c", "depende": [1, 2]},
+                 {"agente": "d", "depende": [3]}, {"agente": "e", "depende": [3]}]
+        self.assertEqual(ondas(plano), [[1, 2], [3], [4, 5]])
+        self.assertEqual(ondas([{"agente": "a"}, {"agente": "b"}]), [[1], [2]])   # sem 'depende' = em série
+        self.assertEqual(ondas([{"agente": "a", "depende": [5]}]), [[1]])          # dependência inválida é ignorada
+
+    def test_assinatura_em_descanso_e_pulada(self):
+        from superagente import provedores
+        tmp = Path(tempfile.mkdtemp()) / "descanso.json"
+        with mock.patch.object(provedores, "ARQUIVO_DESCANSO", tmp), \
+             mock.patch.object(provedores, "chamar", side_effect=lambda m, s, t: (_ for _ in ()).throw(
+                 provedores.ErroProvedor("usage limit reached")) if m.startswith("cli:") else "ok"):
+            self.assertEqual(provedores.chamar_com_reserva(["cli:codex", "eco:x"], "", "", log=lambda *_: None)[0],
+                             "eco:x")
+            self.assertTrue(provedores.descansando("cli:codex/gpt-5"))
+            chamados = []
+            with mock.patch.object(provedores, "chamar", side_effect=lambda m, s, t: chamados.append(m) or "ok"):
+                provedores.chamar_com_reserva(["cli:codex", "eco:x"], "", "", log=lambda *_: None)
+            self.assertEqual(chamados, ["eco:x"])   # nem tentou o Codex em descanso
+
+    def test_sem_cli_dentro_do_mcp(self):
+        from superagente import provedores
+        with mock.patch.dict("os.environ", {"CENTRAL_SEM_CLI": "1"}):
+            self.assertEqual(provedores.chamar_com_reserva(["cli:codex", "eco:x"], "", "", log=lambda *_: None)[0],
+                             "eco:x")
