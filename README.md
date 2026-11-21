@@ -49,6 +49,17 @@ com a regra da casa: **a Central propõe, o Reynolds aprova**.
 | varredura de injeção | bloqueia instruções escondidas, vazamento de chaves e comandos destrutivos | `seguranca.py` |
 | índice de skills | `habilidades.indice()`: catálogo compacto para a IA | `habilidades.py` |
 
+### O que veio do OpenClaw
+
+| OpenClaw | Central | Onde |
+|---|---|---|
+| verificação proativa (30 min, horário ativo, `NO_REPLY`) | **batimento**: coletores sem IA → só sinal novo vai a uma IA gratuita → `[NADA]` ou um aviso curto | `batimento.py` · `agentes/BATIMENTO.md` · `/batimento` |
+| `memory/AAAA-MM-DD.md` + gravação antes de comprimir | **diário**: cada trabalho, ordem, agenda e aviso vira uma linha; hoje e ontem vão nos pedidos | `diario.py` · `/diario` |
+| "dreaming" (o durável sobe para o MEMORY.md) | às 21h o diário do dia vira proposta de memória com ✅/❌ | `batimento.revisar_o_dia` |
+| ferramenta `browser` (perfil dedicado, refs, `ssrfPolicy`) | **navegador**: perfil separado, retrato com refs, rede interna bloqueada; agir só aprovado; nunca senha/cartão | `navegador.py` · MCP `navegador_ler`/`navegador_agir` |
+
+Deixado de fora de propósito: loja de skills de terceiros, acesso livre ao PC sem aprovação, WhatsApp não oficial.
+
 ### Assinaturas, paralelo e MCP
 - **Assinaturas na frente** (`[assinaturas]` em `agentes/agentes.toml`): o Codex (ChatGPT Plus) é o
   trabalhador principal; o revisor usa o Claude; as IAs gratuitas são reserva. Assinatura que bate no

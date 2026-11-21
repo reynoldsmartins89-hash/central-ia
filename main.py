@@ -213,6 +213,9 @@ def main(argv: list[str] | None = None) -> int:
     c_ag = sub.add_parser("agenda", help="tarefas agendadas (listar | criar | remover | rodar)")
     c_ag.add_argument("acao", nargs="?", default="listar", choices=["listar", "criar", "remover", "rodar"])
     c_ag.add_argument("texto", nargs="?", default="", help="criar: '<quando> | <pedido>'; remover: nº")
+    c_bt = sub.add_parser("batimento", help="iniciativa própria: o que a Central vigia (estado | agora)")
+    c_bt.add_argument("acao", nargs="?", default="estado", choices=["estado", "agora"])
+    sub.add_parser("diario", help="mostra o diário de hoje da Central")
     c_lb = sub.add_parser("lembrancas", help="busca em todas as conversas e resultados anteriores")
     c_lb.add_argument("termo", nargs="?", default="", help="o assunto (vazio = só importa o histórico)")
 
@@ -257,6 +260,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{agendador.tick(enviar=telegram.enviar if telegram.configurado() else print)} tarefa(s) rodada(s).")
         else:
             print(agendador.formatar())
+        return 0
+
+    if a.comando == "batimento":
+        from superagente import batimento
+        if a.acao == "agora":
+            print(batimento.bater(enviar=telegram.enviar if telegram.configurado() else print, forcar=True)
+                  or "Nada novo que mereça aviso.")
+        else:
+            print(batimento.estado_legivel())
+        return 0
+
+    if a.comando == "diario":
+        from superagente import diario
+        print(diario.ler() or "O diário de hoje ainda está vazio.")
         return 0
 
     if a.comando == "lembrancas":

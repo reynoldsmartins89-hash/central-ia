@@ -254,6 +254,9 @@ def executar(tarefa: dict, enviar=None, rodar=None) -> str:
         f"# {tarefa['pedido'][:120]}\n\n> Agendada: {tarefa['quando']}\n\n{resposta}\n", encoding="utf-8")
     if enviar and not resposta.startswith(SILENCIO):
         enviar(f"🗓 Tarefa agendada {tarefa['id']} — {tarefa['pedido'][:80]}\n\n{resposta}")
+    if not resposta.startswith(SILENCIO):
+        from . import diario
+        diario.registrar(f"Agenda nº {tarefa['id']} ({tarefa['pedido'][:100]}): {resposta[:200]}", "agenda")
     return resposta
 
 

@@ -45,6 +45,7 @@ class ComPastaTemporaria(unittest.TestCase):
             mock.patch.object(agendador, "PASTA", self.tmp),
             mock.patch.object(agendador, "AGENDA", self.tmp / "agenda.json"),
             mock.patch.object(agendador, "PASTA_SAIDA", self.tmp / "saida"),
+            mock.patch("superagente.diario.PASTA", self.tmp / "diario"),
         ]
         for p in self.patches:
             p.start()

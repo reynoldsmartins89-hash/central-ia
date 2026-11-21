@@ -146,6 +146,13 @@ def contexto(consulta: str = "") -> str:
         compactar()
     except Exception:  # noqa: BLE001 — sem resumo novo, segue com o que tem
         pass
+    try:
+        from . import diario
+        dia = diario.contexto()
+        if dia:
+            partes.append(dia)
+    except Exception:  # noqa: BLE001
+        pass
     resumo_antigo = _conversa().get("resumo", "")
     if resumo_antigo:
         partes.append("## Resumo do começo desta conversa\n" + resumo_antigo)
@@ -261,6 +268,11 @@ def compactar(resumir=None, limite: int = LIMITE_HISTORICO) -> bool:
     conversa["resumo"] = (novo or _resumo_simples(trecho, anterior))[-LIMITE_RESUMO * 2:]
     conversa["resumido_ate"] = fora[-1].get("ts", time.time())
     _gravar(ARQUIVO, conversa)
+    try:   # a "gravação antes de comprimir" do OpenClaw: o resumo também fica no diário do dia
+        from . import diario
+        diario.registrar(f"Resumo da conversa: {conversa['resumo']}", "conversa")
+    except Exception:  # noqa: BLE001
+        pass
     return True
 
 

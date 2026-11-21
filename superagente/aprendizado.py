@@ -291,7 +291,11 @@ def decidir(alvo: str, aprovar: bool) -> str:
         for p in escolhidas:
             if aprovar:
                 try:
-                    linhas.append(f"{p['id']}. ✅ {_aplicar(p)}")
+                    feito = _aplicar(p)
+                    linhas.append(f"{p['id']}. ✅ {feito}")
+                    from . import diario
+                    diario.registrar(f"Aprendido com o seu OK: {feito} — {_texto_para_vigiar(p)[:150]}",
+                                     "aprendizado")
                 except (ValueError, OSError) as erro:
                     linhas.append(f"{p['id']}. ⚠ não apliquei: {erro}")
             else:

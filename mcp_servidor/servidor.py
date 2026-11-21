@@ -89,6 +89,40 @@ def listar_habilidades() -> str:
 
 
 @mcp.tool()
+def navegador_ler(url: str, com_elementos: bool = True) -> str:
+    """Abre uma página no navegador próprio da Central (perfil separado, sem logins) e devolve o texto
+    e os elementos numerados [ref]. Só lê. Rede interna e arquivos locais são bloqueados."""
+    from superagente import navegador
+    try:
+        return navegador.ler(url).como_texto(com_elementos)
+    except navegador.Bloqueado as erro:
+        return f"Bloqueado: {erro}"
+
+
+@mcp.tool()
+def navegador_agir(url: str, acoes: list[dict]) -> str:
+    """AGE numa página: acoes = [{"tipo": "clicar"|"digitar"|"escolher", "ref": 3, "valor": "..."}],
+    com as refs de navegador_ler. Pede aprovação do Reynolds antes de rodar. Recusa senha, cartão e documentos."""
+    from superagente import navegador
+    try:
+        return navegador.agir(url, acoes, aprovado=True).como_texto()
+    except navegador.Bloqueado as erro:
+        return f"Bloqueado: {erro}"
+
+
+@mcp.tool()
+def diario_da_central(dia: str = "") -> str:
+    """Diário da Central (o que foi feito e decidido). dia no formato AAAA-MM-DD; vazio = hoje."""
+    from datetime import date
+    from superagente import diario
+    try:
+        alvo = date.fromisoformat(dia) if dia else None
+    except ValueError:
+        return "Use o formato AAAA-MM-DD."
+    return diario.ler(alvo) or "Diário vazio nesse dia."
+
+
+@mcp.tool()
 def ver_agenda() -> str:
     """Tarefas agendadas da Central (só leitura)."""
     from superagente import agendador

@@ -43,6 +43,13 @@ COMANDOS = """🧠 CENTRAL DE IA — COMANDOS DO SECRETÁRIO
    /agendar equipe <quando> | <pedido> — a equipe completa trabalha no horário
 • /agenda — tarefas marcadas · /desagendar <nº> — apaga uma
 
+💓 INICIATIVA PRÓPRIA (sozinha, sem você pedir)
+• A cada 30 min (7h–22h) a Central confere o resgate do HD, as assinaturas, a agenda e o
+   aprendizado, e SÓ escreve se houver algo novo. A lista do que vigiar: agentes/BATIMENTO.md
+• Mande um link na conversa e ela lê a página antes de responder
+• Diário: tudo o que foi feito no dia fica anotado e acompanha os pedidos (/diario para ler)
+• /batimento — o que está sendo vigiado · /batimento agora — confere já
+
 🖐 EXECUTAR NO SEU PC (de qualquer lugar)
 • /pc <ordem> — o Agente Executor faz de verdade: arquivos, pastas, programas,
    scripts, HDs, Drive e as ferramentas da Central. Mostra o plano → seu ✅ → executa → relatório
@@ -193,6 +200,19 @@ def tratar(texto: str) -> None:
         sessoes.importar()
         _enviar_longo(sessoes.formatar(sessoes.buscar(resto, limite=8)))
         return
+    if comando == "/batimento":
+        from . import batimento
+        if resto.strip().lower() == "agora":
+            enviado = batimento.bater(enviar=telegram.enviar, forcar=True)
+            if not enviado:
+                telegram.enviar("💓 Batida feita: nada novo que mereça aviso.")
+        else:
+            telegram.enviar(batimento.estado_legivel())
+        return
+    if comando == "/diario":
+        from . import diario
+        _enviar_longo(diario.ler() or "📔 O diário de hoje ainda está vazio.")
+        return
     if comando == "/aprender":
         from . import aprendizado
         _enviar_longo(aprendizado.comando(resto))
@@ -275,7 +295,7 @@ def tratar(texto: str) -> None:
 # comandos que dependem do PC (Executor e catálogo dos HDs): na nuvem, ficam guardados para o PC
 SO_NO_PC = {"/pc", "/executar", "/continuar", "/buscar", "/curador", "/duplicados", "/integridade",
             "/reparos", "/leitura", "/vigia", "/vagas", "/aprender", "/agendar", "/agenda", "/desagendar",
-            "/lembrancas"}
+            "/lembrancas", "/batimento", "/diario"}
 
 
 # ------------------------------------------------------------------ modos: conversa, tarefa, ação
@@ -447,6 +467,9 @@ def conversar(texto: str, especialista: bool = True) -> str:
         agente = (_escolher_especialista(f"{anterior} {texto}") if especialista
                   else carregar_equipe()[1]["generalista"])
         contexto = memoria.contexto(consulta=f"{anterior} {texto}")
+        paginas = _paginas(texto)
+        if paginas:
+            contexto = f"{contexto}\n\n{paginas}"
         tarefa = (f"{VOZ_DA_CONVERSA}\n\n{contexto}\n\n## Mensagem atual do Reynolds\n{texto}\n\n"
                   "Responda à mensagem atual, usando a conversa acima para entender referências.")
         memoria.adicionar("voce", texto)
@@ -459,6 +482,18 @@ def conversar(texto: str, especialista: bool = True) -> str:
     _enviar_longo(f"{nuvem}{resposta}{assinatura}")
     _aprender("conversa")
     return resposta
+
+
+def _paginas(texto: str) -> str:
+    """Links na mensagem: o navegador da Central lê as páginas (só no PC, onde ele está instalado)."""
+    if "http" not in texto or caixa_postal.papel() == "nuvem":
+        return ""
+    try:
+        from . import navegador
+        return navegador.paginas_da_mensagem(texto)
+    except Exception as erro:  # noqa: BLE001 — sem navegador, a conversa segue sem as páginas
+        print(f"(navegador: {erro})")
+        return ""
 
 
 def _aprender(motivo: str) -> None:
@@ -492,6 +527,8 @@ def _tarefa_em_equipe(sa: Superagente, texto: str) -> None:
         memoria.adicionar("central", f"[Resultado da equipe — completo em {pasta}]\n{final}")
     except Exception:  # noqa: BLE001
         pass
+    from . import diario
+    diario.registrar(f"Trabalho em equipe: {texto[:160]} → resultados/{pasta.name}", "equipe")
     _aprender("equipe")
 
 
@@ -520,6 +557,9 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
                                   progresso=telegram.enviar)
     memoria.adicionar("central", f"[Relatório do Executor]\n{relatorio}")
     _enviar_longo(f"📋 RELATÓRIO DO EXECUTOR\n\n{relatorio}")
+    from . import diario
+    diario.registrar(f"Executor: {ordem[:160]} — {relatorio.strip().splitlines()[0][:160] if relatorio.strip() else ''}",
+                     "executor")
     _aprender("executor")
 
 
@@ -578,8 +618,9 @@ def rodar() -> None:
     print("🟢 Bot rodando. Deixe esta janela aberta (pode minimizar). Ctrl+C para parar.")
     papel = caixa_postal.papel()
     if papel != "nuvem":   # a agenda mora no PC: a nuvem não roda tarefas (evita rodar duas vezes)
-        from . import agendador, sessoes
+        from . import agendador, batimento, sessoes
         agendador.em_segundo_plano(telegram.enviar)
+        batimento.em_segundo_plano(telegram.enviar)   # iniciativa própria: avisa só o que importa
         try:
             sessoes.importar()   # conversas antigas e resultados entram na lembrança de longo prazo
         except Exception as erro:  # noqa: BLE001
