@@ -233,6 +233,11 @@ def em_segundo_plano(enviar, intervalo: int = INTERVALO) -> threading.Thread:
         time.sleep(120)   # deixa o bot terminar de ligar
         while True:
             try:
+                from . import sessoes
+                sessoes.importar_claude_code()   # o que foi feito no app do Claude entra na lembrança
+            except Exception as erro:  # noqa: BLE001
+                print(f"(lembranças do Claude: {erro})")
+            try:
                 bater(enviar=enviar)
                 revisar_o_dia(enviar=enviar)
             except Exception as erro:  # noqa: BLE001

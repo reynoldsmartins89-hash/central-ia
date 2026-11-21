@@ -165,14 +165,20 @@ def propor(dados: dict, origem: str) -> list[dict]:
 
 
 # ------------------------------------------------------------------ revisão
-def revisar(trecho: str, origem: str = "conversa", chamar=None) -> list[dict]:
-    """Chama o revisor e registra as propostas. `chamar(sistema, mensagem) -> texto` permite testar offline."""
+FOCO_HABILIDADE = ("\n\nATENÇÃO: o Reynolds PEDIU, com todas as letras, para guardar o procedimento desta conversa "
+                   "como habilidade (o 'save a skill' do Grok Bot). Proponha EXATAMENTE UMA habilidade: 'criar' se o "
+                   "assunto for novo, 'corrigir' se já existir uma parecida no índice. Memória só se houver fato óbvio.")
+
+
+def revisar(trecho: str, origem: str = "conversa", chamar=None, foco: str = "") -> list[dict]:
+    """Chama o revisor e registra as propostas. `chamar(sistema, mensagem) -> texto` permite testar offline.
+    `foco`: instrução extra (ex.: FOCO_HABILIDADE quando você pede 'salve isso como habilidade')."""
     if not trecho.strip():
         return []
     memoria_atual = "\n".join([*(f"- [perfil] {f}" for f in memoria.fatos()),
                                *(f"- [caderno] {f}" for f in memoria.caderno())]) or "(vazia)"
     pedido = PEDIDO.format(memoria_atual=memoria_atual, indice=habilidades.indice(), origem=origem,
-                           trecho=trecho[-LIMITE_TRECHO:])
+                           trecho=trecho[-LIMITE_TRECHO:]) + foco
     sistema = "Você revisa conversas e só guarda o que é durável e útil. Responde apenas JSON."
     if chamar is None:
         from . import provedores
@@ -228,6 +234,22 @@ def avisar_com_botoes(novas: list[dict], enviar) -> None:
         if p["tipo"] == "habilidade" and p.get("acao") == "criar":
             texto += f"\n\nPrévia:\n{str(p['corpo'])[:700]}"
         enviar(texto, [("✅ Guardar", f"apr:sim:{p['id']}"), ("❌ Descartar", f"apr:nao:{p['id']}")])
+
+
+PEDE_HABILIDADE = re.compile(
+    r"\b(salv[ea]|guard[ea]|grav[ea]|transform[ea]|registr[ea])\b.{0,40}\b(habilidade|procedimento|skill|passo a passo)\b"
+    r"|\baprend[ae] (isso|esse procedimento|como se faz)\b", re.IGNORECASE)
+
+
+def salvar_como_habilidade(trecho: str, enviar, chamar=None) -> int:
+    """Você pediu 'salve isso como habilidade': revisa já, focado em UMA habilidade, e manda com ✅/❌."""
+    novas = revisar(trecho, "pedido do Reynolds: salvar como habilidade", chamar=chamar, foco=FOCO_HABILIDADE)
+    if novas:
+        avisar_com_botoes(novas, enviar)
+    else:
+        enviar("🤔 Não achei um procedimento claro nesta conversa para virar habilidade. Descreva os passos "
+               "(ou faça a tarefa comigo) e peça de novo.")
+    return len(novas)
 
 
 def listar() -> str:

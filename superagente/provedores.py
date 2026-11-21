@@ -145,11 +145,15 @@ def _cli(ferramenta: str, sistema: str, mensagem: str) -> str:
     O texto vai pela entrada padrão (sem limite de tamanho da linha de comando).
     """
     nome, _, modelo = ferramenta.partition("/")
+    nome, _, extra = nome.partition("+")   # "codex+web": Codex com busca na web ao vivo (fontes reais)
     executavel = _achar_cli(nome)
     if not executavel:
         raise ErroProvedor(f"{nome} não está instalado")
     PASTA_CLI.mkdir(parents=True, exist_ok=True)
     prompt = f"{sistema}\n\n---\n\n{mensagem}\n\nResponda apenas com o conteúdo pedido, sem usar ferramentas nem criar arquivos."
+    if "+web" in ferramenta:
+        prompt = (f"{sistema}\n\n---\n\n{mensagem}\n\nPesquise na web AGORA para responder com informação atual. "
+                  "Cite as fontes com link. Não crie arquivos.")
     import uuid
     saida_codex = PASTA_CLI / f"codex_resposta_{uuid.uuid4().hex[:10]}.txt"   # um por chamada: roda em paralelo
     if nome == "claude":
@@ -157,7 +161,8 @@ def _cli(ferramenta: str, sistema: str, mensagem: str) -> str:
     elif nome == "codex":
         saida_codex.unlink(missing_ok=True)
         comando = [executavel, "exec", "--skip-git-repo-check", "--sandbox", "read-only",
-                   "--output-last-message", str(saida_codex)] + (["-m", modelo] if modelo else []) + ["-"]
+                   "--output-last-message", str(saida_codex)] + (["-m", modelo] if modelo else []) + \
+                  (["-c", 'web_search="live"'] if extra == "web" else []) + ["-"]
     elif nome == "gemini":
         comando = [executavel, "--skip-trust"] + (["-m", modelo] if modelo else [])
     else:
@@ -224,7 +229,7 @@ PISTAS_DE_COTA = ("limit", "quota", "rate", "usage", "429", "exceeded", "too man
 
 def _chave_descanso(especificacao: str) -> str:
     provedor, _, modelo = especificacao.partition(":")
-    return f"cli:{modelo.split('/')[0]}" if provedor == "cli" else especificacao
+    return f"cli:{modelo.split('/')[0].split('+')[0]}" if provedor == "cli" else especificacao
 
 
 def _descansos() -> dict:

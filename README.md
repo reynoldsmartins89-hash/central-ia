@@ -60,6 +60,17 @@ com a regra da casa: **a Central propõe, o Reynolds aprova**.
 
 Deixado de fora de propósito: loja de skills de terceiros, acesso livre ao PC sem aprovação, WhatsApp não oficial.
 
+### O que veio do Grok Bot
+
+| Grok Bot | Central | Onde |
+|---|---|---|
+| Allow once · Always allow · Deny; regras "permitir" e "perguntar antes" (perguntar vence) | botões ✅ Só desta vez · ♾ Sempre · ❌ no Executor; lista fixa do que sempre pede OK; o plano também é conferido | `aprovacoes.py` · `/regras` |
+| rotinas por evento (e-mail, webhook…) | "quando chegar e-mail de X, …" e "quando aparecer arquivo na pasta Y, …" | `agendador.criar_gatilho` |
+| "save a skill" pedindo na conversa | "salve isso como habilidade" → proposta de `SKILL.md` com ✅/❌ | `aprendizado.salvar_como_habilidade` |
+| chat e notas de voz | mandou áudio, recebe áudio (voz do Windows + ffmpeg, local e grátis) | `voz.py` |
+| busca em tempo real com fontes | Codex com busca na web (`cli:codex+web`) para pesquisa, geopolítica, política e perguntas sobre "hoje" | `[assinaturas] com_busca` |
+| memória com registro de trabalho | as conversas do app do Claude entram na lembrança (a cada batimento) | `sessoes.importar_claude_code` |
+
 ### Assinaturas, paralelo e MCP
 - **Assinaturas na frente** (`[assinaturas]` em `agentes/agentes.toml`): o Codex (ChatGPT Plus) é o
   trabalhador principal; o revisor usa o Claude; as IAs gratuitas são reserva. Assinatura que bate no

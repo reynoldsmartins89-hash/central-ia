@@ -200,6 +200,10 @@ def tratar(texto: str) -> None:
         sessoes.importar()
         _enviar_longo(sessoes.formatar(sessoes.buscar(resto, limite=8)))
         return
+    if comando == "/regras":
+        from . import aprovacoes
+        telegram.enviar(aprovacoes.comando(resto))
+        return
     if comando == "/batimento":
         from . import batimento
         if resto.strip().lower() == "agora":
@@ -295,7 +299,7 @@ def tratar(texto: str) -> None:
 # comandos que dependem do PC (Executor e catálogo dos HDs): na nuvem, ficam guardados para o PC
 SO_NO_PC = {"/pc", "/executar", "/continuar", "/buscar", "/curador", "/duplicados", "/integridade",
             "/reparos", "/leitura", "/vigia", "/vagas", "/aprender", "/agendar", "/agenda", "/desagendar",
-            "/lembrancas", "/batimento", "/diario"}
+            "/lembrancas", "/batimento", "/diario", "/regras"}
 
 
 # ------------------------------------------------------------------ modos: conversa, tarefa, ação
@@ -474,14 +478,25 @@ def conversar(texto: str, especialista: bool = True) -> str:
                   "Responda à mensagem atual, usando a conversa acima para entender referências.")
         memoria.adicionar("voce", texto)
         modelos = MODELOS_DA_CONVERSA + [m for m in agente.modelos if m not in MODELOS_DA_CONVERSA]
+        if PEDE_ATUALIDADE.search(texto):   # notícia, cotação, "hoje": o Codex pesquisa na web, com fontes
+            modelos = ["cli:codex+web"] + modelos
         _, resposta = agente.executar(tarefa, modelos=modelos, log=lambda *_: None,
                                       consulta=f"{anterior} {texto}", conversa=True)
     memoria.adicionar("central", resposta)
     assinatura = "" if agente.nome == "generalista" else f"\n\n— _{NOMES_BONITOS.get(agente.nome, agente.nome)}_"
     nuvem = "☁️ " if caixa_postal.papel() == "nuvem" else ""
     _enviar_longo(f"{nuvem}{resposta}{assinatura}")
+    if telegram.RESPONDER_EM_VOZ and caixa_postal.papel() != "nuvem":
+        telegram.RESPONDER_EM_VOZ = False
+        from . import voz
+        voz.responder(resposta)
     _aprender("conversa")
     return resposta
+
+
+PEDE_ATUALIDADE = re.compile(
+    r"\b(hoje|agora|neste momento|ultimas|últimas|recentes?|not[íi]cias?|manchetes?|cota[çc][ãa]o|"
+    r"pre[çc]o atual|placar|aconteceu|est[áa] acontecendo|essa semana|esta semana|ontem)\b", re.IGNORECASE)
 
 
 def _paginas(texto: str) -> str:
@@ -549,9 +564,17 @@ def _executar_no_pc(ordem: str, continuar: bool = False) -> None:
         memoria.adicionar("central", plano)
         _enviar_longo(plano)
         return
-    if not telegram.pedir_aprovacao(f"🖐 PLANO DO EXECUTOR\n\n{plano}"[:3800]):
-        telegram.enviar("❌ Cancelado. Nada foi alterado no seu PC.")
-        return
+    from . import aprovacoes
+    sozinha, porque = aprovacoes.decidir(ordem, plano)
+    if sozinha:
+        telegram.enviar(f"🖐 PLANO DO EXECUTOR\n\n{plano}"[:3500] + f"\n\n♾ {porque}. Executando.")
+    else:
+        resposta = telegram.pedir_decisao(f"🖐 PLANO DO EXECUTOR\n\n{plano}"[:3800], com_sempre=True)
+        if resposta not in ("sim", "sempre"):
+            telegram.enviar("❌ Cancelado. Nada foi alterado no seu PC.")
+            return
+        if resposta == "sempre":
+            telegram.enviar(aprovacoes.permitir_sempre(ordem))
     telegram.enviar("▶️ Executando… vou mandando o andamento.")
     relatorio = executor.executar(ordem, plano, sessao=executor.ultima_sessao() if continuar else sessao,
                                   progresso=telegram.enviar)
@@ -684,6 +707,7 @@ def rodar() -> None:
                 if not texto:
                     continue
                 telegram.PEDIDO_ATUAL = texto
+                telegram.RESPONDER_EM_VOZ = bool(msg.get("voice") or msg.get("audio"))   # falou? ouve de volta
                 if msg.get("photo") or msg.get("document"):
                     # foto/documento: quem decide o que fazer é a SUA legenda, não o conteúdo do arquivo
                     if msg.get("caption") and modo_da_mensagem(msg["caption"]) == "tarefa":
@@ -753,6 +777,14 @@ def _automatico(texto: str) -> bool:
         else:
             telegram.enviar("💡 Nada pendente: tudo o que aprendi já foi decidido por você.")
         return True
+    from . import aprendizado
+    if aprendizado.PEDE_HABILIDADE.search(texto) and len(texto) < 200:
+        telegram.enviar("📘 Vou transformar o que fizemos num procedimento. Já te mando para aprovar…")
+        memoria.adicionar("voce", texto)
+        aprendizado.salvar_como_habilidade(memoria.historico(aprendizado.LIMITE_TRECHO), telegram.enviar)
+        return True
+    if agendador.propor_gatilho(texto, telegram.enviar):
+        return True
     return agendador.propor_natural(texto, telegram.enviar)
 
 
@@ -761,6 +793,7 @@ def _clique_tardio(cb: dict, meu_chat: str) -> None:
     if str((cb.get("message") or {}).get("chat", {}).get("id")) != meu_chat:
         return
     resposta, _, codigo = (cb.get("data") or "").partition(":")
+    resposta = "sim" if resposta == "sempre" else resposta   # toque atrasado em ♾ vale como aprovar
     pedido = telegram.retomar_expirado(codigo) if resposta == "sim" else ""
     try:
         telegram._api("answerCallbackQuery", {"callback_query_id": cb["id"],

@@ -113,6 +113,33 @@ def enviar_arquivo(caminho, legenda: str = "") -> None:
         print(f"   (aviso: não consegui enviar o arquivo ao Telegram: {erro})")
 
 
+RESPONDER_EM_VOZ = False   # ligado pelo bot quando a sua mensagem foi um áudio
+
+
+def enviar_voz(caminho) -> bool:
+    """Manda um .ogg (Opus) como mensagem de voz, que toca direto no celular."""
+    if not configurado():
+        return False
+    import uuid
+    from pathlib import Path
+    caminho = Path(caminho)
+    fronteira = uuid.uuid4().hex
+    partes = [f'--{fronteira}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n'
+              f'{os.getenv("TELEGRAM_CHAT_ID").strip()}\r\n'.encode(),
+              f'--{fronteira}\r\nContent-Disposition: form-data; name="voice"; filename="{caminho.name}"\r\n'
+              f"Content-Type: audio/ogg\r\n\r\n".encode() + caminho.read_bytes() + b"\r\n",
+              f"--{fronteira}--\r\n".encode()]
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendVoice", data=b"".join(partes),
+                                 headers={"Content-Type": f"multipart/form-data; boundary={fronteira}"})
+    try:
+        urllib.request.urlopen(req, timeout=120).read()
+        return True
+    except Exception as erro:  # noqa: BLE001
+        print(f"   (aviso: não consegui enviar a voz ao Telegram: {erro})")
+        return False
+
+
 def _ultimo_update() -> int:
     from . import caixa_postal
     if caixa_postal.papel() != "sozinho":
@@ -167,17 +194,26 @@ def retomar_expirado(codigo: str) -> str:
 
 def pedir_aprovacao(texto: str, espera_max: int | None = None) -> bool:
     """Envia o texto com botões Aprovar/Rejeitar e espera a sua resposta no celular."""
+    return pedir_decisao(texto, espera_max) == "sim"
+
+
+def pedir_decisao(texto: str, espera_max: int | None = None, com_sempre: bool = False) -> str:
+    """Como pedir_aprovacao, mas devolve o botão tocado: 'sim', 'sempre', 'nao' ou '' (sem resposta).
+    com_sempre=True acrescenta ♾ Sempre permitir (as regras do Grok Bot: só desta vez · sempre · negar)."""
     global APROVACAO_ANTECIPADA
     if APROVACAO_ANTECIPADA:
         APROVACAO_ANTECIPADA = False
         enviar(texto + "\n\n✅ Já aprovado por você — executando.")
-        return True
+        return "sim"
     if espera_max is None:   # uma mensagem nova cancela o plano, então esperar mais não trava nada
         espera_max = int(float(os.getenv("APROVACAO_HORAS", "12")) * 3600)
     codigo = str(int(time.time()))
     deslocamento = _ultimo_update() + 1
-    enviar(texto + "\n\nAprovar a execução?",
-           [("✅ Aprovar", f"sim:{codigo}"), ("❌ Rejeitar", f"nao:{codigo}")])
+    botoes = [("✅ Só desta vez" if com_sempre else "✅ Aprovar", f"sim:{codigo}")]
+    if com_sempre:
+        botoes.append(("♾ Sempre", f"sempre:{codigo}"))
+    botoes.append(("❌ Rejeitar", f"nao:{codigo}"))
+    enviar(texto + "\n\nAprovar a execução?", botoes)
     print("📱 Aguardando sua aprovação no Telegram…")
     limite = time.time() + espera_max
     while time.time() < limite:
@@ -188,7 +224,7 @@ def pedir_aprovacao(texto: str, espera_max: int | None = None) -> bool:
                 # mensagem é atendida normalmente (nunca mais "ainda estou esperando…" em série)
                 ADIADAS.append(u)
                 enviar("↩️ Deixei o plano acima de lado (nada foi feito) para atender a sua nova mensagem.")
-                return False
+                return "nao"
             cb = u.get("callback_query") or {}
             if (cb.get("data") or "").startswith(("apr:", "agd:")):
                 ADIADAS.append(u)   # toque num botão de aprendizado/agenda: atendido depois, não se perde
@@ -197,13 +233,14 @@ def pedir_aprovacao(texto: str, espera_max: int | None = None) -> bool:
             if cod != codigo or str(cb.get("message", {}).get("chat", {}).get("id")) != os.getenv("TELEGRAM_CHAT_ID").strip():
                 continue
             _api("answerCallbackQuery", {"callback_query_id": cb["id"],
-                                         "text": "Aprovado!" if resposta == "sim" else "Rejeitado."})
-            return resposta == "sim"
+                                         "text": {"sim": "Aprovado!", "sempre": "Aprovado — e sempre daqui em diante."}
+                                         .get(resposta, "Rejeitado.")})
+            return resposta if resposta in ("sim", "sempre") else "nao"
     if PEDIDO_ATUAL:
         guardar_expirado(codigo, PEDIDO_ATUAL)
     enviar("⏱ Tempo de aprovação esgotado; nada foi feito. Se ainda quiser, toque em ✅ Aprovar no plano "
            "acima a qualquer momento (vale por 7 dias) e eu executo.")
-    return False
+    return ""
 
 
 def descobrir_chat_id() -> str | None:

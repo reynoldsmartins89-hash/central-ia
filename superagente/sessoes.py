@@ -112,6 +112,80 @@ def importar(banco: Path | None = None, pasta_conversas: Path | None = None,
     return depois - antes
 
 
+PASTA_CLAUDE = Path.home() / ".claude" / "projects"
+ESTADO_CLAUDE = PASTA / "sessoes_claude.json"
+FALA_DO_CLAUDE = re.compile(r'"type":\s*"(user|assistant)"')
+
+
+def _texto_da_fala(mensagem: dict) -> str:
+    conteudo = mensagem.get("content")
+    if isinstance(conteudo, str):
+        return conteudo
+    if isinstance(conteudo, list):   # só o texto escrito; resultados de ferramentas ficam de fora
+        return "\n".join(b.get("text", "") for b in conteudo if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def importar_claude_code(pasta: Path | None = None, banco: Path | None = None, estado: Path | None = None) -> int:
+    """Traz as conversas do app do Claude (Claude Code) para a lembrança: assim o bot do Telegram e o
+    superagente fixo sabem o que foi construído e decidido aqui. Só o texto de vocês dois; arquivos que
+    não mudaram desde a última vez são pulados. Devolve quantas falas novas."""
+    pasta = pasta or PASTA_CLAUDE
+    estado = estado or ESTADO_CLAUDE
+    try:
+        vistos = json.loads(estado.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        vistos = {}
+    con = _conectar(banco)
+    antes = con.execute("SELECT count(*) FROM falas").fetchone()[0]
+    con.close()
+    for arquivo in sorted(pasta.glob("*/*.jsonl")) if pasta.exists() else []:
+        marca = f"{arquivo.stat().st_mtime:.0f}-{arquivo.stat().st_size}"
+        if vistos.get(str(arquivo)) == marca:
+            continue
+        titulo, falas = "", []
+        try:
+            with open(arquivo, encoding="utf-8", errors="replace") as f:
+                for linha in f:
+                    if '"custom-title"' in linha or '"ai-title"' in linha:
+                        try:
+                            titulo = json.loads(linha).get("customTitle") or json.loads(linha).get("title") or titulo
+                        except ValueError:
+                            pass
+                        continue
+                    if not FALA_DO_CLAUDE.search(linha):   # filtro rápido antes de ler o JSON
+                        continue
+                    try:
+                        d = json.loads(linha)
+                    except ValueError:
+                        continue
+                    if d.get("isSidechain") or d.get("isMeta"):
+                        continue
+                    texto = _texto_da_fala(d.get("message") or {}).strip()
+                    if not texto or texto.startswith("<") or len(texto) < 3:
+                        continue   # avisos do sistema e comandos internos não são conversa
+                    try:
+                        ts = datetime.fromisoformat(d.get("timestamp", "").replace("Z", "+00:00")).timestamp()
+                    except ValueError:
+                        ts = arquivo.stat().st_mtime
+                    falas.append(("voce" if d.get("type") == "user" else "central", texto, ts))
+        except OSError:
+            continue
+        sessao = f"claude-{arquivo.stem}"
+        for quem, texto, ts in falas:
+            registrar(sessao, quem, texto, ts, origem="claude", titulo=titulo, banco=banco)
+        vistos[str(arquivo)] = marca
+    try:
+        estado.parent.mkdir(parents=True, exist_ok=True)
+        estado.write_text(json.dumps(vistos), encoding="utf-8")
+    except OSError:
+        pass
+    con = _conectar(banco)
+    depois = con.execute("SELECT count(*) FROM falas").fetchone()[0]
+    con.close()
+    return depois - antes
+
+
 def _consulta_fts(texto: str) -> str:
     palavras = [p for p in re.findall(r"\w{3,}", (texto or "").lower()) if p not in PALAVRAS_VAZIAS]
     return " OR ".join(f'"{p}"' for p in dict.fromkeys(palavras[:12]))
@@ -133,10 +207,11 @@ def buscar(texto: str, limite: int = 6, ignorar_sessao: str | None = None,
         linhas = []
     finally:
         con.close()
-    achados, por_sessao = [], {}
+    achados, por_sessao, trechos = [], {}, set()
     for sessao, quem, ts, trecho, origem in linhas:
-        if sessao == ignorar_sessao or por_sessao.get(sessao, 0) >= 2:
+        if sessao == ignorar_sessao or por_sessao.get(sessao, 0) >= 2 or trecho in trechos:
             continue
+        trechos.add(trecho)
         por_sessao[sessao] = por_sessao.get(sessao, 0) + 1
         quando = datetime.fromtimestamp(ts).strftime("%d/%m/%Y") if ts else "?"
         achados.append(Achado(sessao, quem, quando, trecho, origem))
@@ -145,14 +220,18 @@ def buscar(texto: str, limite: int = 6, ignorar_sessao: str | None = None,
     return achados
 
 
+ORIGENS = {"equipe": "resultado de equipe", "claude": "no app do Claude", "diario": "diário",
+           "telegram": "Telegram"}
+
+
 def lembrancas(texto: str, ignorar_sessao: str | None = None, limite: int = 4,
                banco: Path | None = None) -> str:
     """Bloco de contexto com o que já foi tratado antes sobre o assunto (vazio se nada)."""
     achados = buscar(texto, limite, ignorar_sessao, banco)
     if not achados:
         return ""
-    linhas = [f"- [{a.quando}, {'você' if a.quem == 'voce' else 'Central'}"
-              f"{', resultado de equipe' if a.origem == 'equipe' else ''}] {a.trecho}" for a in achados]
+    linhas = [f"- [{a.quando}, {'você' if a.quem == 'voce' else 'Central'}, {ORIGENS.get(a.origem, a.origem)}] "
+              f"{a.trecho}" for a in achados]
     return ("## Lembranças de conversas anteriores (podem estar desatualizadas; use só se ajudarem)\n"
             + "\n".join(linhas))
 
@@ -161,5 +240,5 @@ def formatar(achados: list[Achado]) -> str:
     if not achados:
         return "Nada encontrado nas conversas anteriores."
     return "🔎 Nas nossas conversas anteriores:\n\n" + "\n\n".join(
-        f"• {a.quando} — {'você' if a.quem == 'voce' else 'Central'}"
-        f"{' (equipe)' if a.origem == 'equipe' else ''}:\n  {a.trecho}" for a in achados)
+        f"• {a.quando} — {'você' if a.quem == 'voce' else 'Central'} ({ORIGENS.get(a.origem, a.origem)}):"
+        f"\n  {a.trecho}" for a in achados)

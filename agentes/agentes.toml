@@ -21,6 +21,8 @@ por_ultimo = ["cli:claude"]
 # Agentes que mantêm a própria ordem: o revisor usa o Claude primeiro (revisão e escrita fina,
 # respostas curtas, pouca cota). O Codex entra como reserva dele.
 manter_ordem = ["revisor"]
+# Agentes que pesquisam com o Codex NA WEB, ao vivo e com fontes (a busca em tempo real do Grok):
+com_busca = ["pesquisador", "geopolitica", "politica"]
 
 [superagente]
 habilidade = "geral/superagente"

@@ -78,6 +78,8 @@ def ordenar_assinaturas(lista: list[str], config: dict | None = None, agente: st
     def na_frente(m: str) -> bool:
         return any(m == f or m.startswith(f + "/") for f in frente)
 
+    if agente and agente in config.get("com_busca", []):
+        frente = [f"{m}+web" if m == "cli:codex" else m for m in frente]
     meio = [m for m in lista if not na_frente(m) and not no_fim(m)]
     fim = [m for m in lista if no_fim(m)]
     return frente + meio + fim

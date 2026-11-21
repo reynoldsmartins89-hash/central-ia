@@ -201,7 +201,8 @@ def pausar(numero: int, ativa: bool = False) -> bool:
                 t["ativa"] = ativa
                 if ativa:
                     t["falhas"] = 0
-                    t["proxima"] = proxima(t["regra"], time.time()) or t["proxima"]
+                    if not t.get("gatilho"):
+                        t["proxima"] = proxima(t["regra"], time.time()) or t["proxima"]
                 _gravar(tarefas)
                 return True
     return False
@@ -214,7 +215,8 @@ def formatar() -> str:
                 "que importam para o Brasil")
     linhas = ["🗓 Tarefas agendadas:"]
     for t in tarefas:
-        prox = datetime.fromtimestamp(t["proxima"]).strftime("%d/%m %H:%M") if t.get("proxima") else "—"
+        prox = ("ao acontecer" if t.get("gatilho") else
+                datetime.fromtimestamp(t["proxima"]).strftime("%d/%m %H:%M") if t.get("proxima") else "—")
         estado = "▶" if t["ativa"] else "⏸"
         linhas.append(f"{estado} {t['id']}. [{t['quando']}] {t['pedido'][:90]}\n   próxima: {prox} · "
                       f"modo {t['modo']} · {t['execucoes']} execuções")
@@ -263,9 +265,10 @@ def executar(tarefa: dict, enviar=None, rodar=None) -> str:
 def tick(agora: float | None = None, enviar=None, rodar=None) -> int:
     """Roda as tarefas vencidas. Devolve quantas rodaram."""
     agora = agora or time.time()
+    rodadas = conferir_gatilhos(enviar, rodar)
     with _trava:
-        vencidas = [t for t in _ler() if t["ativa"] and t.get("proxima") and t["proxima"] <= agora]
-    rodadas = 0
+        vencidas = [t for t in _ler() if t["ativa"] and not t.get("gatilho") and t.get("proxima")
+                    and t["proxima"] <= agora]
     for t in vencidas:
         atrasada = agora - t["proxima"] > ATRASO_MAXIMO
         erro = None
@@ -295,6 +298,143 @@ def tick(agora: float | None = None, enviar=None, rodar=None) -> int:
                     atual["ativa"] = False
             _gravar(tarefas)
     return rodadas
+
+
+# ------------------------------------------------------------------ rotinas por evento (do Grok Bot)
+# "quando chegar e-mail de X, …" / "quando aparecer arquivo novo na pasta Y, …"
+BANCO_EMAILS = Path.home() / ".central-ia" / "emails.db"
+GATILHO_EMAIL = re.compile(r"quando (?:chegar|receber|eu receber)(?: um| algum)? e-?mail (?:de|do|da|dos|das) "
+                           r"(?P<alvo>[^,:]+?)\s*[,:]\s*(?P<pedido>.+)", re.IGNORECASE | re.DOTALL)
+GATILHO_PASTA = re.compile(r"quando (?:aparecer|chegar|entrar|cair)(?: um| algum)? arquivo(?: novo)? (?:na|no|em) "
+                           r"(?:pasta )?(?P<alvo>[^,]+?)\s*,\s*(?P<pedido>.+)", re.IGNORECASE | re.DOTALL)
+MAXIMO_ARQUIVOS_POR_EVENTO = 10
+
+
+def _banco_emails() -> Path:
+    from . import emails
+    return getattr(emails, "BANCO", BANCO_EMAILS)
+
+
+def _ultimo_email() -> int:
+    import sqlite3
+    try:
+        con = sqlite3.connect(_banco_emails())
+        try:
+            return con.execute("SELECT COALESCE(MAX(rowid), 0) FROM emails").fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return 0
+
+
+def _arquivos(pasta: Path) -> list[str]:
+    try:
+        return sorted(p.name for p in pasta.iterdir() if p.is_file())
+    except OSError:
+        return []
+
+
+def criar_gatilho(tipo: str, alvo: str, pedido: str, modo: str = "rapido") -> dict:
+    """tipo 'email' (alvo = remetente ou parte do nome/endereço) ou 'pasta' (alvo = caminho)."""
+    alvo, pedido = alvo.strip().strip('"«»'), pedido.strip()
+    if not alvo or not pedido:
+        raise ValueError("faltou o alvo ou o pedido")
+    if tipo == "pasta":
+        pasta = Path(alvo)
+        if not pasta.is_dir():
+            raise ValueError(f"a pasta {alvo} não existe")
+        gatilho = {"tipo": "pasta", "alvo": str(pasta), "vistos": _arquivos(pasta)}
+    elif tipo == "email":
+        gatilho = {"tipo": "email", "alvo": alvo, "ultimo": _ultimo_email()}
+    else:
+        raise ValueError("tipo de gatilho desconhecido")
+    with _trava:
+        tarefas = _ler()
+        tarefa = {"id": max((t["id"] for t in tarefas), default=0) + 1, "quando": f"quando: {tipo} {alvo}",
+                  "regra": {"tipo": "evento"}, "gatilho": gatilho, "pedido": pedido, "modo": modo,
+                  "proxima": None, "ativa": True, "falhas": 0, "execucoes": 0,
+                  "criada": datetime.now().strftime("%d/%m/%Y %H:%M")}
+        tarefas.append(tarefa)
+        _gravar(tarefas)
+    return tarefa
+
+
+def _eventos(gatilho: dict) -> tuple[list[str], dict]:
+    """(descrições dos eventos novos, gatilho atualizado)."""
+    if gatilho["tipo"] == "pasta":
+        atuais = _arquivos(Path(gatilho["alvo"]))
+        novos = [n for n in atuais if n not in set(gatilho.get("vistos", []))]
+        return ([f"arquivo novo: {Path(gatilho['alvo']) / n}" for n in novos[:MAXIMO_ARQUIVOS_POR_EVENTO]],
+                {**gatilho, "vistos": atuais})
+    import sqlite3
+    try:
+        con = sqlite3.connect(_banco_emails())
+        try:
+            linhas = con.execute(
+                "SELECT rowid, de_nome, de_email, assunto, data, trecho FROM emails WHERE rowid > ? "
+                "AND (lower(de_email) LIKE ? OR lower(de_nome) LIKE ?) ORDER BY rowid LIMIT 20",
+                (gatilho.get("ultimo", 0), f"%{gatilho['alvo'].lower()}%", f"%{gatilho['alvo'].lower()}%")).fetchall()
+            ultimo = con.execute("SELECT COALESCE(MAX(rowid), 0) FROM emails").fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return [], gatilho
+    eventos = [f"e-mail de {n or e} <{e}> em {d}: «{a}» — {(t or '')[:400]}" for _, n, e, a, d, t in linhas]
+    return eventos, {**gatilho, "ultimo": ultimo}
+
+
+def conferir_gatilhos(enviar=None, rodar=None) -> int:
+    with _trava:
+        tarefas = [t for t in _ler() if t.get("ativa") and t.get("gatilho")]
+    rodadas = 0
+    for t in tarefas:
+        eventos, novo = _eventos(t["gatilho"])
+        erro = None
+        if eventos:
+            pedido = f"{t['pedido']}\n\n## O que acabou de acontecer\n" + "\n".join(f"- {e}" for e in eventos)
+            try:
+                executar({**t, "pedido": pedido}, enviar, rodar)
+                rodadas += 1
+            except Exception as e:  # noqa: BLE001
+                erro = e
+        with _trava:
+            todas = _ler()
+            for atual in todas:
+                if atual["id"] == t["id"]:
+                    atual["gatilho"] = novo
+                    if eventos and not erro:
+                        atual["execucoes"] = atual.get("execucoes", 0) + 1
+                        atual["falhas"] = 0
+                    elif erro:
+                        atual["falhas"] = atual.get("falhas", 0) + 1
+                        if atual["falhas"] >= LIMITE_FALHAS:
+                            atual["ativa"] = False
+                            if enviar:
+                                enviar(f"⏸ Pausei a rotina {atual['id']} depois de {LIMITE_FALHAS} falhas seguidas.")
+            _gravar(todas)
+    return rodadas
+
+
+def propor_gatilho(texto: str, enviar) -> bool:
+    """'quando chegar e-mail de X, …' → mostra o entendido com ✅/❌ (mesmo fluxo da agenda)."""
+    for tipo, padrao in (("email", GATILHO_EMAIL), ("pasta", GATILHO_PASTA)):
+        m = padrao.search(texto or "")
+        if not m:
+            continue
+        alvo, pedido = m.group("alvo").strip(), m.group("pedido").strip()
+        if tipo == "pasta" and not Path(alvo.strip('"«»')).is_dir():
+            enviar(f"⚠ Não achei a pasta {alvo}. Mande o caminho completo (ex.: E:\\Recebidos).")
+            return True
+        codigo = str(int(time.time() * 1000))
+        pendentes = _ler_pendentes()
+        pendentes[codigo] = {"gatilho": tipo, "alvo": alvo, "pedido": pedido, "modo": "rapido", "ts": time.time()}
+        _gravar_pendentes(pendentes)
+        quando = f"quando chegar e-mail de {alvo}" if tipo == "email" else f"quando aparecer arquivo novo em {alvo}"
+        aviso = ("\n(Os e-mails são vistos quando o Gerenciador de E-mails lê as caixas.)" if tipo == "email" else "")
+        enviar(f"⚡ Rotina por evento:\n• Quando: {quando}\n• O quê: {pedido}{aviso}\n\nCriar?",
+               [("✅ Criar", f"agd:sim:{codigo}"), ("❌ Não", f"agd:nao:{codigo}")])
+        return True
+    return False
 
 
 def em_segundo_plano(enviar, intervalo: int = 60) -> threading.Thread:
@@ -437,6 +577,12 @@ def confirmar_natural(codigo: str, sim: bool) -> str:
         return "Esse agendamento já tinha sido decidido."
     if not sim:
         return "Ok, não agendei nada."
+    if dados.get("gatilho"):
+        try:
+            t = criar_gatilho(dados["gatilho"], dados["alvo"], dados["pedido"], dados.get("modo", "rapido"))
+        except ValueError as erro:
+            return f"⚠ Não consegui criar a rotina: {erro}"
+        return f"⚡ Rotina nº {t['id']} criada. Para ver ou apagar: \"o que está agendado?\""
     try:
         t = criar(dados["quando"], dados["pedido"], dados["modo"])
     except ValueError as erro:
